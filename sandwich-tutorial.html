@@ -545,13 +545,14 @@
 
         state.wrongGuesses += 1;
         var W = w.toUpperCase();
-        var firstSwap = !state.explainedSwap;
+        // Show the swap explanation on the second and third guess screens.
+        var explainSwap = state.wrongGuesses <= 2;
 
         if (w < ANSWER) {
           // Guess is lower than the answer -> takes the lower bound's (MILK) slot.
           state.lower = w;
           state.boundSide = "top";
-          state.lead = firstSwap
+          state.lead = explainSwap
             ? W +
               " comes before the secret word, so it takes MILK's place. Now it's between " +
               W +
@@ -561,14 +562,13 @@
           // Guess is higher than the answer -> takes the upper bound's (STAR) slot.
           state.upper = w;
           state.boundSide = "bottom";
-          state.lead = firstSwap
+          state.lead = explainSwap
             ? W +
               " comes after the secret word, so it takes STAR's place. Now it's between MILK and " +
               W +
               "."
             : "The secret word comes before " + W + ".";
         }
-        state.explainedSwap = true;
         state.note = "";
         state.typed = "";
 
@@ -683,22 +683,28 @@
       }
 
       var lastStepHtml = null;
+      var lastLeadNote = null;
       function renderStep() {
         var cue = cueHtml();
-        var html =
+        var leadNote =
           '<p class="step-lead">' +
           state.lead +
           "</p>" +
           '<p class="step-note">' +
           state.note +
-          "</p>" +
-          (cue ? '<p class="step-cue">' + cue + "</p>" : "");
+          "</p>";
+        var html = leadNote + (cue ? '<p class="step-cue">' + cue + "</p>" : "");
         if (html === lastStepHtml) return;
         lastStepHtml = html;
         stepEl.innerHTML = html;
-        stepEl.classList.remove("step-in");
-        void stepEl.offsetWidth;
-        stepEl.classList.add("step-in");
+        // Only replay the entrance animation when the lead/note changes —
+        // a pill-only change (e.g. after typing PL) updates silently.
+        if (leadNote !== lastLeadNote) {
+          lastLeadNote = leadNote;
+          stepEl.classList.remove("step-in");
+          void stepEl.offsetWidth;
+          stepEl.classList.add("step-in");
+        }
       }
 
       function renderKeyboard() {
