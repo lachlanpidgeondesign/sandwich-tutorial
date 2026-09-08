@@ -423,7 +423,7 @@
           lead:
             'GOAL: Guess the secret word hidden alphabetically between the two words.',
           note:
-            'The two words are <span class="step-key">Milk</span> and <span class="step-key">Star</span>. Every guess narrows the gap.',
+            'The two words are <span class="step-key">Milk</span> and <span class="step-key">Star</span>, they are not clues to the answer.',
           shake: false,
           boundSide: null // 'top' | 'bottom' just moved
         };
@@ -547,6 +547,8 @@
         var W = w.toUpperCase();
         // Show the swap explanation on the second and third guess screens.
         var explainSwap = state.wrongGuesses <= 2;
+        // The bound word this guess will replace (captured before we overwrite it).
+        var other = (w < ANSWER ? state.lower : state.upper).toUpperCase();
 
         if (w < ANSWER) {
           // Guess is lower than the answer -> takes the lower bound's (MILK) slot.
@@ -554,9 +556,13 @@
           state.boundSide = "top";
           state.lead = explainSwap
             ? W +
-              " comes before the secret word, so it takes MILK's place. Now it's between " +
-              W +
-              " and STAR."
+              " comes before the secret word, so it takes " +
+              other +
+              "'s place. Now it's between " +
+              state.lower.toUpperCase() +
+              " and " +
+              state.upper.toUpperCase() +
+              "."
             : "The secret word comes after " + W + ".";
         } else {
           // Guess is higher than the answer -> takes the upper bound's (STAR) slot.
@@ -564,8 +570,12 @@
           state.boundSide = "bottom";
           state.lead = explainSwap
             ? W +
-              " comes after the secret word, so it takes STAR's place. Now it's between MILK and " +
-              W +
+              " comes after the secret word, so it takes " +
+              other +
+              "'s place. Now it's between " +
+              state.lower.toUpperCase() +
+              " and " +
+              state.upper.toUpperCase() +
               "."
             : "The secret word comes before " + W + ".";
         }
