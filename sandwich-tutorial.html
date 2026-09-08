@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to Play Sandwich</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400..800&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --primary: #2b54c9;
+      --on-accent: #ffffff;
+      --foreground: #1a2230;
+      --muted-foreground: #6b7280;
+      --border: #d9dbe0;
+      --bg: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      background: var(--bg);
+      color: var(--foreground);
+      font-family: "Inter", system-ui, sans-serif;
+      min-height: 100dvh;
+    }
+
+    .app {
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 12px 16px 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .skip {
+      background: none;
+      border: none;
+      color: rgba(26, 34, 48, 0.7);
+      font-size: 16px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .skip:hover { color: var(--foreground); }
+
+    h1.title {
+      font-family: "Literata", Georgia, serif;
+      font-weight: 700;
+      font-size: 30px;
+      text-align: center;
+      padding: 2px 0 10px;
+    }
+
+    /* Step text */
+    .step {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-height: 92px;
+      padding: 0 8px;
+    }
+    .step-lead {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.25;
+      text-wrap: balance;
+    }
+    .step-note {
+      color: var(--muted-foreground);
+      font-size: 15px;
+      line-height: 1.4;
+      text-wrap: balance;
+    }
+    .step-cue {
+      margin-top: 4px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: #f4b23e;
+      color: #1a2230;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .step-key { font-weight: 700; }
+    .step-in { animation: step-in 0.26s cubic-bezier(0, 0, 0.2, 1) both; }
+    @keyframes step-in {
+      0% { opacity: 0; transform: translateY(9px); }
+    }
+
+    /* Word wheel */
+    .wheel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 32px 8px;
+    }
+    .bound {
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--foreground);
+      text-transform: uppercase;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .bound.far { opacity: 0.35; font-size: 15px; font-weight: 600; }
+    .bound.enter-anim { animation: bound-in 0.35s ease both; }
+    @keyframes bound-in {
+      0% { opacity: 0; }
+    }
+    /* Word travels from the centre up to the top bound... */
+    .bound.move-top { animation: move-to-top 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    @keyframes move-to-top {
+      0% { opacity: 0; transform: translateY(46px) scale(1.08); }
+      60% { opacity: 1; }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    /* ...or down to the bottom bound. */
+    .bound.move-bottom { animation: move-to-bottom 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    @keyframes move-to-bottom {
+      0% { opacity: 0; transform: translateY(-46px) scale(1.08); }
+      60% { opacity: 1; }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .input-card {
+      width: 100%;
+      max-width: 360px;
+      height: 60px;
+      border: 2.5px solid var(--primary);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    .input-card.shake { animation: shake 0.5s; }
+    .input-card.solved {
+      border-color: #f4b23e;
+      background: #f4b23e;
+      color: #1a2230;
+    }
+    .thinking-dots {
+      letter-spacing: 0.15em;
+      color: var(--muted-foreground);
+    }
+    .thinking-dots::after {
+      content: "\00B7";
+      animation: thinking 1s steps(1, end) infinite;
+    }
+    @keyframes thinking {
+      0% { content: "\00B7"; }
+      33% { content: "\00B7\00B7"; }
+      66% { content: "\00B7\00B7\00B7"; }
+    }
+    @keyframes shake {
+      10%, 90% { transform: translateX(-1px); }
+      20%, 80% { transform: translateX(2px); }
+      30%, 50%, 70% { transform: translateX(-3px); }
+      40%, 60% { transform: translateX(3px); }
+    }
+    .slot-empty { opacity: 0.4; }
+    .caret {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: var(--primary);
+      margin-left: 2px;
+      animation: blink 1s steps(1) infinite;
+      vertical-align: middle;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Guesses left */
+    .guesses {
+      text-align: center;
+      color: var(--muted-foreground);
+      margin: 4px 0 8px;
+    }
+    .guesses strong { color: var(--foreground); }
+
+    /* Keyboard */
+    .keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .krow {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+    }
+    .key {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 46px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      font-family: inherit;
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--foreground);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s, box-shadow 0.12s, background 0.15s, transform 0.08s;
+    }
+    .key.wide {
+      flex: 1.6 1 0;
+      background: rgba(107, 114, 128, 0.18);
+      border-color: rgba(107, 114, 128, 0.3);
+    }
+    .key:active { transform: scale(0.95); }
+    .key.dim {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    .key.lit {
+      box-shadow: 0 0 0 2px var(--primary);
+      background: rgba(43, 84, 201, 0.1);
+      opacity: 1;
+    }
+    .key svg { width: 20px; height: 20px; }
+
+    /* Non-blocking prompt (shown after an early solve) */
+    .prompt {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .prompt[hidden] { display: none; }
+    .prompt-card {
+      pointer-events: auto;
+      max-width: 420px;
+      width: 100%;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+      padding: 16px 18px;
+      text-align: center;
+      animation: prompt-in 0.28s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    @keyframes prompt-in {
+      0% { opacity: 0; transform: translateY(16px); }
+    }
+    .prompt-text {
+      font-size: 15px;
+      line-height: 1.4;
+      color: var(--foreground);
+      text-wrap: balance;
+    }
+    .prompt-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+    .btn {
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 8px 20px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--foreground);
+    }
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    /* Demo modal (a separate example) */
+    .demo {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(20, 26, 38, 0.55);
+      animation: fade 0.2s ease both;
+    }
+    .demo[hidden] { display: none; }
+    @keyframes fade { 0% { opacity: 0; } }
+    .demo-card {
+      width: 100%;
+      max-width: 460px;
+      max-height: 96dvh;
+      overflow: auto;
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 12px 60px rgba(0, 0, 0, 0.35);
+      padding: 18px 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      animation: prompt-in 0.28s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    .demo-badge {
+      align-self: center;
+      background: #eef1f8;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      padding: 5px 12px;
+      margin-bottom: 6px;
+    }
+    .demo-done {
+      align-self: center;
+      margin-top: 12px;
+    }
+    .demo-done[hidden] { display: none; }
+  </style>
+
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <button class="skip" id="skip">Skip</button>
+    </div>
+
+    <h1 class="title">How to Play Sandwich</h1>
+
+    <div class="step" id="step" aria-live="polite"></div>
+
+    <div class="wheel">
+      <div class="bound" id="boundTop">MILK</div>
+      <div class="input-card" id="inputCard"></div>
+      <div class="bound" id="boundBottom">STAR</div>
+    </div>
+
+    <p class="guesses">Guesses left: <strong id="guessesLeft">10</strong></p>
+
+    <div class="keyboard" id="keyboard"></div>
+  </div>
+
+  <!-- Non-blocking prompt after an early solve -->
+  <div class="prompt" id="promptOverlay" hidden>
+    <div class="prompt-card">
+      <p class="prompt-text">
+        You found it before we could show you how the hints work &mdash; want a
+        quick look?
+      </p>
+      <div class="prompt-actions">
+        <button class="btn" id="promptNo">No</button>
+        <button class="btn btn-primary" id="promptYes">Yes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Standalone hint demo (a separate example word) -->
+  <div class="demo" id="demoOverlay" hidden>
+    <div class="demo-card">
+      <div class="demo-badge">Demo &middot; a different word</div>
+      <div class="step" id="demoStep" aria-live="polite"></div>
+      <div class="wheel">
+        <div class="bound" id="demoBoundTop">BOAT</div>
+        <div class="input-card" id="demoInput"></div>
+        <div class="bound" id="demoBoundBottom">FISH</div>
+      </div>
+      <div class="keyboard" id="demoKeyboard"></div>
+      <button class="btn btn-primary demo-done" id="demoDone" hidden>Done</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var ANSWER = "play";
+      var HI = "{{{{{{{{{{{{"; // sentinel greater than any lowercase letter run
+
+      var state;
+
+      function initialState() {
+        return {
+          lower: "milk",
+          upper: "star",
+          typed: "",
+          phase: "opening", // opening | narrowing | guided-hint | guided-final | solved
+          wrongGuesses: 0,
+          explainedSwap: false,
+          sawHints: false,
+          guessesLeft: 10,
+          solved: false,
+          thinking: false,
+          lead:
+            'GOAL: Guess the secret word hidden alphabetically between the two words.',
+          note:
+            'The two words are <span class="step-key">Milk</span> and <span class="step-key">Star</span>. Every guess narrows the gap.',
+          shake: false,
+          boundSide: null // 'top' | 'bottom' just moved
+        };
+      }
+
+      // A prefix is viable if some completion lands strictly between the bounds.
+      function viable(prefix) {
+        if (!prefix) return true;
+        var hi = prefix + HI;
+        return hi > state.lower && prefix < state.upper;
+      }
+
+      function currentTarget() {
+        if (state.phase === "guided-hint") return "pl";
+        if (state.phase === "guided-final") return "play";
+        return null;
+      }
+
+      function forcedNextChar() {
+        var t = currentTarget();
+        if (!t) return null;
+        if (state.typed.length < t.length && t.indexOf(state.typed) === 0) {
+          return t.charAt(state.typed.length);
+        }
+        return null;
+      }
+
+      // Only the full-answer guided guess ("play") locks the board once complete.
+      function locked() {
+        return currentTarget() === "play" && state.typed === "play";
+      }
+
+      function keyState(letter) {
+        if (state.solved || state.thinking) return "dim";
+        var fn = forcedNextChar();
+        if (fn) return letter === fn ? "lit" : "dim";
+        if (locked()) return "dim";
+        return viable(state.typed + letter) ? "enabled" : "dim";
+      }
+
+      function guessValid() {
+        return (
+          state.typed.length >= 1 &&
+          state.lower < state.typed &&
+          state.typed < state.upper
+        );
+      }
+
+      function enterState() {
+        if (state.solved || state.thinking) return "dim";
+        // While a lit path is still being followed, keep Enter dim.
+        if (forcedNextChar()) return "dim";
+        if (!guessValid()) return "dim";
+        if (currentTarget()) return "lit";
+        return "enabled";
+      }
+
+      function cueHtml() {
+        if (state.phase === "solved") return "That's the game.";
+        if (state.phase === "guided-final") return "Follow the lit keys home.";
+        if (state.phase === "guided-hint") {
+          return forcedNextChar()
+            ? "Here's a hint, follow the lit keys."
+            : "The rest is on you.";
+        }
+        if (state.phase === "opening") return "Guess a word.";
+        return "Guess again.";
+      }
+
+      // ---- Actions ----
+      function typeLetter(l) {
+        if (state.solved || state.thinking) return;
+        var ks = keyState(l);
+        if (ks !== "enabled" && ks !== "lit") return;
+        state.typed += l;
+        render();
+      }
+
+      function backspace() {
+        if (state.solved || state.thinking || !state.typed) return;
+        state.typed = state.typed.slice(0, -1);
+        render();
+      }
+
+      function goSolved() {
+        state.phase = "solved";
+        state.solved = true;
+        state.typed = ANSWER;
+        state.lead = "You found the secret word.";
+        state.note = "Every guess narrowed the gap until you found the secret word.";
+        render();
+      }
+
+      function submit() {
+        if (state.solved || state.thinking) return;
+        if (!guessValid()) {
+          state.shake = true;
+          render();
+          return;
+        }
+        // Pause on a brief "thinking" beat, then resolve the guess.
+        state.thinking = true;
+        render();
+        setTimeout(resolveGuess, 750);
+      }
+
+      function resolveGuess() {
+        state.thinking = false;
+        var w = state.typed;
+        state.guessesLeft = Math.max(0, state.guessesLeft - 1);
+
+        // A correct guess from any state goes straight to solved — never faked.
+        if (w === ANSWER) {
+          var earlySolve = !state.sawHints;
+          goSolved();
+          if (earlySolve) maybeOfferDemo();
+          return;
+        }
+
+        state.wrongGuesses += 1;
+        var W = w.toUpperCase();
+        var firstSwap = !state.explainedSwap;
+
+        if (w < ANSWER) {
+          // Guess is lower than the answer -> takes the lower bound's (MILK) slot.
+          state.lower = w;
+          state.boundSide = "top";
+          state.lead = firstSwap
+            ? W +
+              " comes before the secret word, so it takes MILK's place. Now it's between " +
+              W +
+              " and STAR."
+            : "The secret word comes after " + W + ".";
+        } else {
+          // Guess is higher than the answer -> takes the upper bound's (STAR) slot.
+          state.upper = w;
+          state.boundSide = "bottom";
+          state.lead = firstSwap
+            ? W +
+              " comes after the secret word, so it takes STAR's place. Now it's between MILK and " +
+              W +
+              "."
+            : "The secret word comes before " + W + ".";
+        }
+        state.explainedSwap = true;
+        state.note = "";
+        state.typed = "";
+
+        // ---- State transitions ----
+        if (state.phase === "opening" || state.phase === "narrowing") {
+          if (state.wrongGuesses >= 2) {
+            state.phase = "guided-hint";
+            state.sawHints = true;
+          } else {
+            state.phase = "narrowing";
+          }
+        } else if (state.phase === "guided-hint") {
+          state.phase = "guided-final";
+          state.lead = "Not the answer, but not wasted.";
+          state.note = "It became the new edge, and the gap shrank again.";
+        }
+        // guided-final stays put; its lit path leads to the answer.
+
+        render();
+      }
+
+      function skip() {
+        goSolved();
+      }
+
+      // ---- Rendering ----
+      var stepEl = document.getElementById("step");
+      var boundTopEl = document.getElementById("boundTop");
+      var boundBottomEl = document.getElementById("boundBottom");
+      var inputCardEl = document.getElementById("inputCard");
+      var guessesLeftEl = document.getElementById("guessesLeft");
+      var keyboardEl = document.getElementById("keyboard");
+
+      var ROWS = [
+        "qwertyuiop".split(""),
+        "asdfghjkl".split(""),
+        ["enter"].concat("zxcvbnm".split("")).concat(["back"])
+      ];
+
+      var BACK_SVG =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"></path><path d="m12 9 6 6"></path><path d="m18 9-6 6"></path></svg>';
+
+      function buildKeyboard() {
+        keyboardEl.innerHTML = "";
+        ROWS.forEach(function (row) {
+          var rowEl = document.createElement("div");
+          rowEl.className = "krow";
+          row.forEach(function (k) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            if (k === "enter") {
+              btn.className = "key wide";
+              btn.textContent = "Enter";
+              btn.dataset.action = "enter";
+            } else if (k === "back") {
+              btn.className = "key wide";
+              btn.innerHTML = BACK_SVG;
+              btn.dataset.action = "back";
+            } else {
+              btn.className = "key";
+              btn.textContent = k.toUpperCase();
+              btn.dataset.letter = k;
+            }
+            rowEl.appendChild(btn);
+          });
+          keyboardEl.appendChild(rowEl);
+        });
+
+        keyboardEl.addEventListener("click", function (e) {
+          var btn = e.target.closest("button");
+          if (!btn) return;
+          if (btn.dataset.action === "enter") submit();
+          else if (btn.dataset.action === "back") backspace();
+          else if (btn.dataset.letter) typeLetter(btn.dataset.letter);
+        });
+      }
+
+      function renderInput() {
+        inputCardEl.classList.toggle("solved", state.solved);
+        if (state.thinking) {
+          inputCardEl.innerHTML = '<span class="thinking-dots"></span>';
+        } else if (state.typed) {
+          inputCardEl.innerHTML =
+            state.typed.toUpperCase() +
+            (state.solved ? "" : '<span class="caret"></span>');
+        } else {
+          inputCardEl.innerHTML =
+            '<span class="slot-empty">&ndash;&nbsp;&ndash;&nbsp;&ndash;&nbsp;&ndash;</span>';
+        }
+        if (state.shake) {
+          inputCardEl.classList.remove("shake");
+          // force reflow to restart animation
+          void inputCardEl.offsetWidth;
+          inputCardEl.classList.add("shake");
+          state.shake = false;
+        }
+      }
+
+      function renderBounds() {
+        boundTopEl.textContent = state.lower.toUpperCase();
+        boundBottomEl.textContent = state.upper.toUpperCase();
+        if (state.boundSide === "top") {
+          boundTopEl.classList.remove("move-top");
+          void boundTopEl.offsetWidth;
+          boundTopEl.classList.add("move-top");
+        } else if (state.boundSide === "bottom") {
+          boundBottomEl.classList.remove("move-bottom");
+          void boundBottomEl.offsetWidth;
+          boundBottomEl.classList.add("move-bottom");
+        }
+        state.boundSide = null;
+      }
+
+      var lastStepHtml = null;
+      function renderStep() {
+        var cue = cueHtml();
+        var html =
+          '<p class="step-lead">' +
+          state.lead +
+          "</p>" +
+          '<p class="step-note">' +
+          state.note +
+          "</p>" +
+          (cue ? '<p class="step-cue">' + cue + "</p>" : "");
+        if (html === lastStepHtml) return;
+        lastStepHtml = html;
+        stepEl.innerHTML = html;
+        stepEl.classList.remove("step-in");
+        void stepEl.offsetWidth;
+        stepEl.classList.add("step-in");
+      }
+
+      function renderKeyboard() {
+        var buttons = keyboardEl.querySelectorAll("button");
+        buttons.forEach(function (btn) {
+          btn.classList.remove("dim", "lit");
+          var s;
+          if (btn.dataset.action === "enter") s = enterState();
+          else if (btn.dataset.action === "back")
+            s = state.solved || state.thinking || !state.typed ? "dim" : "enabled";
+          else s = keyState(btn.dataset.letter);
+
+          if (s === "dim") btn.classList.add("dim");
+          else if (s === "lit") btn.classList.add("lit");
+        });
+      }
+
+      function render() {
+        renderStep();
+        renderBounds();
+        renderInput();
+        renderKeyboard();
+        guessesLeftEl.textContent = state.guessesLeft;
+      }
+
+      // Physical keyboard support
+      document.addEventListener("keydown", function (e) {
+        if (demoActive) return;
+        if (state.solved) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submit();
+        } else if (e.key === "Backspace") {
+          e.preventDefault();
+          backspace();
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+          typeLetter(e.key.toLowerCase());
+        }
+      });
+
+      document.getElementById("skip").addEventListener("click", skip);
+
+      // ================= Early-solve prompt + standalone hint demo =================
+      var demoActive = false;
+      var promptOverlay = document.getElementById("promptOverlay");
+      var demoOverlay = document.getElementById("demoOverlay");
+
+      function maybeOfferDemo() {
+        promptOverlay.hidden = false;
+      }
+
+      document.getElementById("promptNo").addEventListener("click", function () {
+        promptOverlay.hidden = true;
+      });
+      document.getElementById("promptYes").addEventListener("click", function () {
+        promptOverlay.hidden = true;
+        openDemo();
+      });
+
+      // --- Demo: a separate example (BOAT .. FISH, answer DUCK) ---
+      var DEMO = {
+        answer: "duck",
+        state: null,
+        built: false,
+        lastStepHtml: null,
+        el: {
+          step: document.getElementById("demoStep"),
+          top: document.getElementById("demoBoundTop"),
+          bottom: document.getElementById("demoBoundBottom"),
+          input: document.getElementById("demoInput"),
+          keyboard: document.getElementById("demoKeyboard"),
+          done: document.getElementById("demoDone")
+        }
+      };
+
+      function demoInitState() {
+        return {
+          lower: "boat",
+          upper: "fish",
+          typed: "",
+          phase: "guided-hint", // guided-hint | guided-final | solved
+          solved: false,
+          thinking: false,
+          shake: false,
+          boundSide: null,
+          lead: "Same idea, a new word.",
+          note:
+            'The word is between <span class="step-key">Boat</span> and <span class="step-key">Fish</span>.'
+        };
+      }
+
+      function demoViable(prefix) {
+        if (!prefix) return true;
+        var hi = prefix + HI;
+        return hi > DEMO.state.lower && prefix < DEMO.state.upper;
+      }
+      function demoTarget() {
+        if (DEMO.state.phase === "guided-hint") return "du";
+        if (DEMO.state.phase === "guided-final") return "duck";
+        return null;
+      }
+      function demoForced() {
+        var t = demoTarget();
+        if (!t) return null;
+        var ty = DEMO.state.typed;
+        if (ty.length < t.length && t.indexOf(ty) === 0)
+          return t.charAt(ty.length);
+        return null;
+      }
+      function demoLocked() {
+        return demoTarget() === "duck" && DEMO.state.typed === "duck";
+      }
+      function demoKeyState(letter) {
+        if (DEMO.state.solved || DEMO.state.thinking) return "dim";
+        var fn = demoForced();
+        if (fn) return letter === fn ? "lit" : "dim";
+        if (demoLocked()) return "dim";
+        return demoViable(DEMO.state.typed + letter) ? "enabled" : "dim";
+      }
+      function demoGuessValid() {
+        var t = DEMO.state.typed;
+        return t.length >= 1 && DEMO.state.lower < t && t < DEMO.state.upper;
+      }
+      function demoEnterState() {
+        if (DEMO.state.solved || DEMO.state.thinking) return "dim";
+        if (demoForced()) return "dim";
+        if (!demoGuessValid()) return "dim";
+        if (demoTarget()) return "lit";
+        return "enabled";
+      }
+      function demoCue() {
+        if (DEMO.state.solved) return "";
+        if (DEMO.state.phase === "guided-final")
+          return "Follow the lit keys home.";
+        return demoForced()
+          ? "Here's a hint, follow the lit keys."
+          : "The rest is on you.";
+      }
+
+      function demoType(l) {
+        if (DEMO.state.solved || DEMO.state.thinking) return;
+        var ks = demoKeyState(l);
+        if (ks !== "enabled" && ks !== "lit") return;
+        DEMO.state.typed += l;
+        demoRender();
+      }
+      function demoBackspace() {
+        if (DEMO.state.solved || DEMO.state.thinking || !DEMO.state.typed) return;
+        DEMO.state.typed = DEMO.state.typed.slice(0, -1);
+        demoRender();
+      }
+      function demoSubmit() {
+        if (DEMO.state.solved || DEMO.state.thinking) return;
+        if (!demoGuessValid()) {
+          DEMO.state.shake = true;
+          demoRender();
+          return;
+        }
+        DEMO.state.thinking = true;
+        demoRender();
+        setTimeout(demoResolve, 750);
+      }
+      function demoResolve() {
+        DEMO.state.thinking = false;
+        var w = DEMO.state.typed;
+        if (w === DEMO.answer) {
+          DEMO.state.solved = true;
+          DEMO.state.phase = "solved";
+          DEMO.state.lead = "That's the word.";
+          DEMO.state.note = "That's how the hints guide you home.";
+          demoRender();
+          DEMO.el.done.hidden = false;
+          return;
+        }
+        if (w < DEMO.answer) {
+          DEMO.state.lower = w;
+          DEMO.state.boundSide = "top";
+        } else {
+          DEMO.state.upper = w;
+          DEMO.state.boundSide = "bottom";
+        }
+        DEMO.state.typed = "";
+        if (DEMO.state.phase === "guided-hint") {
+          DEMO.state.phase = "guided-final";
+          DEMO.state.lead = "Not the answer, but not wasted.";
+          DEMO.state.note = "It became the new edge. Follow the lit keys home.";
+        }
+        demoRender();
+      }
+
+      function demoBuildKeyboard() {
+        DEMO.el.keyboard.innerHTML = "";
+        ROWS.forEach(function (row) {
+          var rowEl = document.createElement("div");
+          rowEl.className = "krow";
+          row.forEach(function (k) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            if (k === "enter") {
+              btn.className = "key wide";
+              btn.textContent = "Enter";
+              btn.dataset.action = "enter";
+            } else if (k === "back") {
+              btn.className = "key wide";
+              btn.innerHTML = BACK_SVG;
+              btn.dataset.action = "back";
+            } else {
+              btn.className = "key";
+              btn.textContent = k.toUpperCase();
+              btn.dataset.letter = k;
+            }
+            rowEl.appendChild(btn);
+          });
+          DEMO.el.keyboard.appendChild(rowEl);
+        });
+        DEMO.el.keyboard.addEventListener("click", function (e) {
+          var btn = e.target.closest("button");
+          if (!btn) return;
+          if (btn.dataset.action === "enter") demoSubmit();
+          else if (btn.dataset.action === "back") demoBackspace();
+          else if (btn.dataset.letter) demoType(btn.dataset.letter);
+        });
+      }
+
+      function demoRender() {
+        // step
+        var cue = demoCue();
+        var html =
+          '<p class="step-lead">' +
+          DEMO.state.lead +
+          "</p>" +
+          '<p class="step-note">' +
+          DEMO.state.note +
+          "</p>" +
+          (cue ? '<p class="step-cue">' + cue + "</p>" : "");
+        if (html !== DEMO.lastStepHtml) {
+          DEMO.lastStepHtml = html;
+          DEMO.el.step.innerHTML = html;
+          DEMO.el.step.classList.remove("step-in");
+          void DEMO.el.step.offsetWidth;
+          DEMO.el.step.classList.add("step-in");
+        }
+        // bounds
+        DEMO.el.top.textContent = DEMO.state.lower.toUpperCase();
+        DEMO.el.bottom.textContent = DEMO.state.upper.toUpperCase();
+        if (DEMO.state.boundSide === "top") {
+          DEMO.el.top.classList.remove("move-top");
+          void DEMO.el.top.offsetWidth;
+          DEMO.el.top.classList.add("move-top");
+        } else if (DEMO.state.boundSide === "bottom") {
+          DEMO.el.bottom.classList.remove("move-bottom");
+          void DEMO.el.bottom.offsetWidth;
+          DEMO.el.bottom.classList.add("move-bottom");
+        }
+        DEMO.state.boundSide = null;
+        // input
+        DEMO.el.input.classList.toggle("solved", DEMO.state.solved);
+        if (DEMO.state.thinking) {
+          DEMO.el.input.innerHTML = '<span class="thinking-dots"></span>';
+        } else if (DEMO.state.typed) {
+          DEMO.el.input.innerHTML =
+            DEMO.state.typed.toUpperCase() +
+            (DEMO.state.solved ? "" : '<span class="caret"></span>');
+        } else {
+          DEMO.el.input.innerHTML =
+            '<span class="slot-empty">&ndash;&nbsp;&ndash;&nbsp;&ndash;&nbsp;&ndash;</span>';
+        }
+        if (DEMO.state.shake) {
+          DEMO.el.input.classList.remove("shake");
+          void DEMO.el.input.offsetWidth;
+          DEMO.el.input.classList.add("shake");
+          DEMO.state.shake = false;
+        }
+        // keyboard
+        var buttons = DEMO.el.keyboard.querySelectorAll("button");
+        buttons.forEach(function (btn) {
+          btn.classList.remove("dim", "lit");
+          var s;
+          if (btn.dataset.action === "enter") s = demoEnterState();
+          else if (btn.dataset.action === "back")
+            s =
+              DEMO.state.solved || DEMO.state.thinking || !DEMO.state.typed
+                ? "dim"
+                : "enabled";
+          else s = demoKeyState(btn.dataset.letter);
+          if (s === "dim") btn.classList.add("dim");
+          else if (s === "lit") btn.classList.add("lit");
+        });
+      }
+
+      function openDemo() {
+        if (!DEMO.built) {
+          demoBuildKeyboard();
+          DEMO.built = true;
+        }
+        DEMO.state = demoInitState();
+        DEMO.lastStepHtml = null;
+        DEMO.el.done.hidden = true;
+        demoOverlay.hidden = false;
+        demoActive = true;
+        demoRender();
+      }
+
+      function closeDemo() {
+        demoOverlay.hidden = true;
+        demoActive = false;
+      }
+
+      DEMO.el.done.addEventListener("click", closeDemo);
+
+      // Physical keyboard for the demo (only while it's open)
+      document.addEventListener("keydown", function (e) {
+        if (!demoActive || DEMO.state.solved) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          demoSubmit();
+        } else if (e.key === "Backspace") {
+          e.preventDefault();
+          demoBackspace();
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+          demoType(e.key.toLowerCase());
+        }
+      });
+
+      state = initialState();
+      buildKeyboard();
+      render();
+    })();
+  </script>
+</body>
+</html>
