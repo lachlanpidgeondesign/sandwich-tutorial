@@ -96,6 +96,17 @@
       letter-spacing: 0.02em;
       color: var(--muted-foreground);
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.15em;
+    }
+    /* Thermometer icon: mercury height + colour set inline per guess. The
+       outline uses currentColor, so it inherits the muted meta text colour. */
+    .thermo-icon {
+      width: 1.15em;
+      height: 1.15em;
+      vertical-align: -0.2em;
+      flex: 0 0 auto;
     }
 
     .bound.move-top { animation: move-to-top 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
@@ -1242,13 +1253,13 @@
       // between arms; these constants set the shared challenge. ----
       // WINDOW_WORDS is THE gap dial: the number of legal same-length words
       // that sit strictly between the two bounds -- the space the player must
-      // bisect. Bisection needs ~log2(W) guesses, so 120 puts the optimal
-      // solve near 7 against a 10-guess budget: a step harder than the old 60
-      // without becoming brutal. Both surviving modes (% and locking) leak
-      // extra information per guess, the other reason to widen the gap.
+      // bisect. Bisection needs ~log2(W) guesses. The % readout lets a player
+      // interpolate the answer's rough position from just a couple of guesses,
+      // so it pins a narrow gap down fast -- 200 gives it more room to search
+      // (optimal solve ~7-8 against a 10-guess budget) without becoming brutal.
       // Generation auto-clamps to the band size and logs if a band is ever too
-      // small to hold this many. Raise toward 180 if playtesting says it's soft.
-      var WINDOW_WORDS  = 120;  // legal guesses (WORDS of the answer's length) between the bounds
+      // small to hold this many. Raise toward 260 if playtesting says it's soft.
+      var WINDOW_WORDS  = 200;  // legal guesses (WORDS of the answer's length) between the bounds
 
       // Locking gets a MUCH wider window, on purpose. Its difficulty is not the
       // word count but how far the deciding letters spread: a narrow window
@@ -1901,6 +1912,55 @@
         return pct.toFixed(1);
       }
 
+      // The same closeness as a raw 0..1 ratio, for driving the thermometer
+      // icon (fill height and heat colour). Kept separate from closenessPct so
+      // the displayed number and the icon can never drift apart in rounding.
+      function closenessRatio(word) {
+        var len = state.answer.length;
+        var span = Math.abs(
+          alphaValueLen(state.startUpper, len) - alphaValueLen(state.startLower, len)
+        );
+        if (span < 1) span = 1;
+        var d = Math.abs(alphaValueLen(word, len) - alphaValueLen(state.answer, len));
+        var c = 1 - d / span;
+        if (c < 0) c = 0;
+        if (c > 1) c = 1;
+        return c;
+      }
+
+      // Cold (blue) -> warm (amber) -> hot (red), so the colour reinforces the
+      // number at a glance.
+      function heatColor(ratio) {
+        var stops = [[59, 110, 165], [232, 169, 62], [214, 69, 69]];
+        var seg = ratio < 0.5 ? 0 : 1;
+        var t = ratio < 0.5 ? ratio / 0.5 : (ratio - 0.5) / 0.5;
+        var a = stops[seg], b = stops[seg + 1];
+        var r = Math.round(a[0] + (b[0] - a[0]) * t);
+        var g = Math.round(a[1] + (b[1] - a[1]) * t);
+        var bl = Math.round(a[2] + (b[2] - a[2]) * t);
+        return "rgb(" + r + "," + g + "," + bl + ")";
+      }
+
+      // A small thermometer whose mercury rises with closeness and takes the
+      // heat colour. Bulb is always filled; the stem fills from the bulb up to
+      // `ratio` of its height.
+      function thermoIconHTML(ratio) {
+        var color = heatColor(ratio);
+        var stemTop = 4, stemBottom = 15.5, usable = stemBottom - stemTop;
+        var mercTop = stemBottom - ratio * usable;
+        return '<svg class="thermo-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+          // outline
+          '<rect x="9" y="2" width="6" height="15" rx="3" fill="none" ' +
+            'stroke="currentColor" stroke-width="1.6"/>' +
+          '<circle cx="12" cy="18.5" r="4.4" fill="none" ' +
+            'stroke="currentColor" stroke-width="1.6"/>' +
+          // mercury: bulb + rising column
+          '<circle cx="12" cy="18.5" r="2.9" fill="' + color + '"/>' +
+          '<rect x="10.55" y="' + mercTop.toFixed(2) + '" width="2.9" height="' +
+            (stemBottom - mercTop + 2).toFixed(2) + '" rx="1.45" fill="' + color + '"/>' +
+          '</svg>';
+      }
+
       // Only the player's own guesses carry a readout. The opening bounds are
       // given, not guessed, and are explicitly not clues -- annotating them
       // would mislead.
@@ -1949,13 +2009,14 @@
         return { below: below, above: above };
       }
 
-      // side: 'lower' (a guess before the answer -> answer is below -> down
-      // arrow) or 'upper' (a guess after the answer -> answer is above -> up).
+      // The percent readout pairs a thermometer icon (heat = how close) with
+      // the number. Direction is already conveyed by which side of the answer
+      // the word sits on, so no arrow is needed.
       function boundHTML(word, side) {
         var html = word.toUpperCase();
         if (state.mode === "percent" && wasGuessed(word)) {
-          var arrow = side === "lower" ? "\u2193" : "\u2191";
-          html += '<span class="bound-meta">' + arrow + " " +
+          var ratio = closenessRatio(word);
+          html += '<span class="bound-meta">' + thermoIconHTML(ratio) + " " +
             closenessPct(word) + "%</span>";
         }
         return html;
