@@ -210,37 +210,55 @@
       justify-content: center;
       gap: 5px;
     }
+    /* Default state = an AVAILABLE letter: solid, raised and clearly tappable. */
     .key {
       flex: 1 1 0;
       min-width: 0;
-      height: 46px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: #fff;
+      height: 48px;
+      border: 1px solid #c3c7d0;
+      border-bottom-width: 3px;
+      border-radius: 7px;
+      background: #e9ebef;
       font-family: inherit;
       font-size: 17px;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--foreground);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: opacity 0.2s, box-shadow 0.12s, background 0.15s, transform 0.08s;
+      transition: background 0.15s, color 0.15s, border-color 0.15s,
+        box-shadow 0.12s, transform 0.08s;
     }
+    .key:hover { background: #dfe2e8; }
     .key.wide {
       flex: 1.6 1 0;
-      background: rgba(107, 114, 128, 0.18);
-      border-color: rgba(107, 114, 128, 0.3);
+      background: #d5d8de;
+      border-color: #b2b7c1;
+      font-weight: 700;
     }
-    .key:active { transform: scale(0.95); }
+    .key.wide:hover { background: #cbcfd6; }
+    .key:active {
+      transform: translateY(2px);
+      border-bottom-width: 1px;
+    }
+    /* Unavailable letter: flat, low-contrast and recessed so it clearly reads
+       as "you can't use this". */
     .key.dim {
-      opacity: 0.35;
+      background: transparent;
+      border-color: transparent;
+      color: #bcc0c8;
+      font-weight: 500;
+      box-shadow: none;
+      cursor: default;
       pointer-events: none;
     }
+    /* Hinted letter: filled accent so the suggested key really pops. */
     .key.lit {
-      box-shadow: 0 0 0 2px var(--primary);
-      background: rgba(43, 84, 201, 0.1);
-      opacity: 1;
+      background: var(--primary);
+      border-color: var(--primary);
+      color: var(--on-accent);
+      box-shadow: 0 0 0 3px rgba(43, 84, 201, 0.28);
     }
     .key svg { width: 20px; height: 20px; }
 
@@ -294,6 +312,8 @@
       border: 1px solid var(--border);
       background: #fff;
       color: var(--foreground);
+      text-decoration: none;
+      display: inline-block;
     }
     .btn-primary {
       background: var(--primary);
@@ -368,6 +388,18 @@
     <p class="guesses">Guesses left: <strong id="guessesLeft">10</strong></p>
 
     <div class="keyboard" id="keyboard"></div>
+  </div>
+
+  <!-- Ready-to-play prompt shown when the tutorial is complete -->
+  <div class="prompt" id="playOverlay" hidden>
+    <div class="prompt-card">
+      <p class="prompt-text">
+        That's how Sandwich works. Ready to play today's puzzle?
+      </p>
+      <div class="prompt-actions">
+        <a class="btn btn-primary" href="game.html">Play Sandwich</a>
+      </div>
+    </div>
   </div>
 
   <!-- Non-blocking prompt after an early solve -->
@@ -540,6 +572,7 @@
           var earlySolve = !state.sawHints;
           goSolved();
           if (earlySolve) maybeOfferDemo();
+          else showPlayPrompt();
           return;
         }
 
@@ -601,7 +634,7 @@
       }
 
       function skip() {
-        goSolved();
+        window.location.href = "game.html";
       }
 
       // ---- Rendering ----
@@ -761,13 +794,19 @@
       var demoActive = false;
       var promptOverlay = document.getElementById("promptOverlay");
       var demoOverlay = document.getElementById("demoOverlay");
+      var playOverlay = document.getElementById("playOverlay");
 
       function maybeOfferDemo() {
         promptOverlay.hidden = false;
       }
 
+      function showPlayPrompt() {
+        playOverlay.hidden = false;
+      }
+
       document.getElementById("promptNo").addEventListener("click", function () {
         promptOverlay.hidden = true;
+        showPlayPrompt();
       });
       document.getElementById("promptYes").addEventListener("click", function () {
         promptOverlay.hidden = true;
@@ -1021,6 +1060,7 @@
       function closeDemo() {
         demoOverlay.hidden = true;
         demoActive = false;
+        showPlayPrompt();
       }
 
       DEMO.el.done.addEventListener("click", closeDemo);

@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sandwich</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400..800&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --primary: #2b54c9;
+      --accent: #e8a93e;
+      --on-accent: #ffffff;
+      --foreground: #1a2230;
+      --muted-foreground: #6b7280;
+      --border: #d9dbe0;
+      --bg: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      background: var(--bg);
+      color: var(--foreground);
+      font-family: "Inter", system-ui, sans-serif;
+      min-height: 100dvh;
+    }
+
+    .app {
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 20px 16px 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Subtitle / status line */
+    .subtitle {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 500;
+      line-height: 1.35;
+      color: var(--foreground);
+      min-height: 50px;
+      padding: 0 8px;
+      text-wrap: balance;
+    }
+    .subtitle em { font-style: italic; }
+    .subtitle.step-in { animation: step-in 0.26s cubic-bezier(0, 0, 0.2, 1) both; }
+    @keyframes step-in {
+      0% { opacity: 0; transform: translateY(9px); }
+    }
+
+    /* Word wheel */
+    .wheel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 32px 8px;
+    }
+    .bound {
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--foreground);
+      text-transform: uppercase;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .bound.far {
+      opacity: 0.35;
+      font-size: 15px;
+      font-weight: 600;
+      min-height: 22px;
+    }
+    /* Keep the reserved row height so the wheel never jumps. */
+    .bound.far.empty { visibility: hidden; }
+    /* Closeness readout sits inline after a guessed bound word: just text,
+       no border or fill. Sized relative to the word so the far (smaller)
+       bounds scale their readout down too. */
+    .bound-meta {
+      margin-left: 0.5em;
+      font-size: 0.62em;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--muted-foreground);
+      white-space: nowrap;
+    }
+
+    .bound.move-top { animation: move-to-top 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    @keyframes move-to-top {
+      0% { opacity: 0; transform: translateY(46px) scale(1.08); }
+      60% { opacity: 1; }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .bound.move-bottom { animation: move-to-bottom 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    @keyframes move-to-bottom {
+      0% { opacity: 0; transform: translateY(-46px) scale(1.08); }
+      60% { opacity: 1; }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Thermometer (mode: 'thermometer' only) ------------------------------
+       Lives OUTSIDE .wheel, so the wheel's five rows and its reserved
+       ghost-row height are untouched. Alignment is structural rather than
+       measured: .thermo mirrors .wheel's padding (32px), its gap (8px) and
+       the 22px reserved height of .bound.far top and bottom, and the tube
+       takes the rest. With hB as a bound row's height that makes the tube
+       80 + 2*hB tall, which is exactly the span from the top of the top
+       bound to the bottom of the bottom bound -- for ANY font metrics, with
+       no pixel measurement, no resize listener and no fonts.ready wait. */
+    .wheel-row {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      gap: 12px;
+    }
+    /* The one property .wheel gains: it must absorb the remaining width.
+       Its heights and its rows are untouched. */
+    .wheel-row > .wheel { flex: 1 1 auto; min-width: 0; }
+
+    .thermo,
+    .thermo-spacer { flex: 0 0 14px; width: 14px; }
+    /* Hidden in the other two arms, which therefore lay out exactly as
+       before -- no tube, and no gap where one would be. */
+    .thermo[hidden],
+    .thermo-spacer[hidden] { display: none; }
+
+    .thermo {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;          /* matches .wheel */
+      padding: 32px 0;   /* matches .wheel */
+    }
+    .thermo-pad { flex: 0 0 22px; }   /* matches .bound.far's reserved height */
+
+    .thermo-tube {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;                     /* the jaws anchor to this */
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(232, 169, 62, 0.16);   /* --accent at low alpha */
+    }
+    /* Two jaws closing in from top and bottom. The GAP between them is what is
+       still in play, so the tube empties as the player closes in. */
+    .thermo-jaw {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 0;
+      transition: height 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+    /* Amber deepens toward the closing edge, so the eye is pulled to the gap. */
+    .thermo-jaw-top {
+      top: 0;
+      background: linear-gradient(180deg, rgba(232, 169, 62, 0.40), var(--accent));
+    }
+    .thermo-jaw-bottom {
+      bottom: 0;
+      background: linear-gradient(0deg, rgba(232, 169, 62, 0.40), var(--accent));
+    }
+
+    .input-card {
+      width: 100%;
+      max-width: 360px;
+      height: 64px;
+      border: 2.5px solid var(--accent);
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin: 0 auto;
+    }
+    .input-card.shake { animation: shake 0.5s; }
+    .input-card.solved {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #1a2230;
+    }
+    .thinking-dots {
+      letter-spacing: 0.15em;
+      color: var(--muted-foreground);
+    }
+    .thinking-dots::after {
+      content: "\00B7";
+      animation: thinking 1s steps(1, end) infinite;
+    }
+    @keyframes thinking {
+      0% { content: "\00B7"; }
+      33% { content: "\00B7\00B7"; }
+      66% { content: "\00B7\00B7\00B7"; }
+    }
+    @keyframes shake {
+      10%, 90% { transform: translateX(-1px); }
+      20%, 80% { transform: translateX(2px); }
+      30%, 50%, 70% { transform: translateX(-3px); }
+      40%, 60% { transform: translateX(3px); }
+    }
+    .slot-empty { opacity: 0.4; }
+    /* Locking mode: a proven letter, shown as a filled pill so it clearly
+       reads as locked in place rather than just typed. */
+    .slot-lock {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.1em;
+      padding: 0.08em 0.28em;
+      margin: 0 0.04em;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #1a2230;
+      box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+    }
+    .caret {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: var(--accent);
+      margin-left: 2px;
+      animation: blink 1s steps(1) infinite;
+      vertical-align: middle;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Guesses left */
+    .guesses {
+      text-align: center;
+      color: var(--muted-foreground);
+      margin: 4px 0 0;
+    }
+    .guesses strong { color: var(--foreground); }
+
+    /* Inline validity message. Height is reserved so the keyboard never shifts,
+       the same approach .bound.far.empty uses for the ghost rows. */
+    .notice {
+      text-align: center;
+      font-size: 14px;
+      line-height: 1.3;
+      color: var(--muted-foreground);
+      min-height: 34px;
+      padding: 8px 8px 0;
+      text-wrap: balance;
+      opacity: 0;
+      transition: opacity 0.26s cubic-bezier(0, 0, 0.2, 1);
+    }
+    .notice.show { opacity: 1; }
+
+    /* Keyboard */
+    .keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .krow {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+    }
+    /* Default state = an AVAILABLE letter: solid, raised and clearly tappable. */
+    .key {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 48px;
+      border: 1px solid #c3c7d0;
+      border-bottom-width: 3px;
+      border-radius: 7px;
+      background: #e9ebef;
+      font-family: inherit;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--foreground);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s, border-color 0.15s,
+        box-shadow 0.12s, transform 0.08s;
+    }
+    .key:hover { background: #dfe2e8; }
+    .key.wide {
+      flex: 1.6 1 0;
+      background: #d5d8de;
+      border-color: #b2b7c1;
+      font-weight: 700;
+    }
+    .key.wide:hover { background: #cbcfd6; }
+    .key:active {
+      transform: translateY(2px);
+      border-bottom-width: 1px;
+    }
+    /* Unavailable letter: flat, low-contrast and recessed so it clearly reads
+       as "you can't use this". */
+    .key.dim {
+      background: transparent;
+      border-color: transparent;
+      color: #bcc0c8;
+      font-weight: 500;
+      box-shadow: none;
+      cursor: default;
+      pointer-events: none;
+    }
+    .key svg { width: 20px; height: 20px; }
+
+    /* End-of-game prompt */
+    .prompt {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .prompt[hidden] { display: none; }
+    .prompt-card {
+      pointer-events: auto;
+      max-width: 420px;
+      width: 100%;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+      padding: 16px 18px;
+      text-align: center;
+      animation: prompt-in 0.28s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    @keyframes prompt-in {
+      0% { opacity: 0; transform: translateY(16px); }
+    }
+    .prompt-text {
+      font-size: 15px;
+      line-height: 1.4;
+      color: var(--foreground);
+      text-wrap: balance;
+    }
+    .prompt-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+    .btn {
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 8px 20px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--foreground);
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #1a2230;
+    }
+    .seed-line {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted-foreground);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Start screen. Same overlay mechanism as .prompt (the hidden attribute),
+       but covering the board because it gates play. */
+    .start {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(26, 34, 48, 0.55);
+      animation: fade 0.26s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    .start[hidden] { display: none; }
+    @keyframes fade { 0% { opacity: 0; } }
+    .start-card {
+      width: 100%;
+      max-width: 420px;
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 12px 60px rgba(0, 0, 0, 0.35);
+      padding: 26px 20px 22px;
+      text-align: center;
+      animation: prompt-in 0.28s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    .start-title {
+      font-family: "Literata", Georgia, serif;
+      font-weight: 700;
+      font-size: 32px;
+    }
+    .start-sub {
+      margin-top: 6px;
+      font-size: 15px;
+      line-height: 1.4;
+      color: var(--muted-foreground);
+      text-wrap: balance;
+    }
+    .start-label {
+      margin-top: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+    /* All three arms get identical visual weight: styling one as primary would
+       read as a recommendation and bias the choice. */
+    .start-modes {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .start-modes .btn { width: 100%; }
+
+    /* Nothing here is load-bearing motion: every entrance animation uses "both"
+       fill, so a near-zero duration settles on its end state. */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <p class="subtitle" id="subtitle">
+      Find the word <em>alphabetically</em> in between
+    </p>
+
+    <div class="wheel-row">
+      <div class="thermo" id="thermo" role="img"
+           aria-label="Gauge showing how much of the range is still left to search" hidden>
+        <div class="thermo-pad"></div>
+        <div class="thermo-tube">
+          <div class="thermo-jaw thermo-jaw-top" id="thermoJawTop"></div>
+          <div class="thermo-jaw thermo-jaw-bottom" id="thermoJawBottom"></div>
+        </div>
+        <div class="thermo-pad"></div>
+      </div>
+
+      <div class="wheel">
+        <div class="bound far empty" id="boundTopFar"></div>
+        <div class="bound" id="boundTop">ART</div>
+        <div class="input-card" id="inputCard"></div>
+        <div class="bound" id="boundBottom">CAN</div>
+        <div class="bound far empty" id="boundBottomFar"></div>
+      </div>
+
+      <!-- Keeps the wheel centred in the row, so the composition doesn't
+           shift sideways in thermometer mode only. -->
+      <div class="thermo-spacer" id="thermoSpacer" aria-hidden="true" hidden></div>
+    </div>
+
+    <p class="guesses">Guesses left: <strong id="guessesLeft">10</strong></p>
+    <p class="notice" id="notice" role="status" aria-live="polite"></p>
+
+    <div class="keyboard" id="keyboard"></div>
+  </div>
+
+  <!-- End-of-game prompt -->
+  <div class="prompt" id="promptOverlay" hidden>
+    <div class="prompt-card">
+      <p class="prompt-text" id="promptText"></p>
+      <div class="prompt-actions">
+        <button class="btn" id="promptModes">Change mode</button>
+        <button class="btn btn-primary" id="promptAgain">Play again</button>
+      </div>
+      <p class="seed-line" id="promptSeed"></p>
+    </div>
+  </div>
+
+  <!-- Start screen: the first thing shown on load -->
+  <div class="start" id="startOverlay">
+    <div class="start-card">
+      <h1 class="start-title">Sandwich</h1>
+      <p class="start-sub">
+        Find the secret word hidden <em>alphabetically</em> between two others.
+      </p>
+      <p class="start-label">Choose a feedback mode</p>
+      <div class="start-modes">
+        <button class="btn" data-mode="percent">Percentage</button>
+        <button class="btn" data-mode="locking">Locking</button>
+      </div>
+      <p class="seed-line" id="startSeed"></p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // =====================================================================
+      // Word lists, split as Wordle does.
+      //
+      //   WORDS   - every word legal to type. Includes regular -s plurals and
+      //             -ed/-ing forms, so a player is never told a real word
+      //             "isn't in the word list".
+      //   ANSWERS - the subset eligible to be the hidden word. Excludes regular
+      //             plurals and function words: fine as guesses, poor as answers.
+      //
+      // Built from a frequency-ranked list intersected with Webster's 2nd, then
+      // pruned of proper nouns, abbreviations, non-English fragments and crude
+      // terms. Sorted with LC_ALL=C, which matches JS "<" byte order exactly --
+      // the comparison this whole game runs on.
+      // =====================================================================
+      var WORDS = [
+        "ability", "able", "about", "above", "abroad", "absence", "absent", "abuse", "academy", "accent",
+        "accept", "access", "account", "accused", "ace", "achieve", "acid", "acne", "acquire", "acre",
+        "acrobat", "across", "acrylic", "act", "acting", "action", "active", "actor", "actress", "actual",
+        "acute", "adapter", "add", "added", "address", "adjust", "admit", "adobe", "adopt", "adopted",
+        "adult", "advance", "adverse", "advert", "advice", "advise", "advised", "advisor", "aerial", "affair",
+        "affect", "afford", "afraid", "after", "again", "against", "age", "aged", "agency", "agenda",
+        "agent", "aging", "ago", "agree", "agreed", "ahead", "aid", "aim", "air", "airport",
+        "alarm", "album", "alcohol", "alert", "algebra", "alias", "alien", "align", "alike", "alive",
+        "all", "allergy", "allied", "allow", "alloy", "almost", "alone", "along", "alpha", "alpine",
+        "already", "also", "alter", "alto", "alumni", "always", "amateur", "amazing", "amber", "ambient",
+        "amend", "amino", "among", "amongst", "amount", "analyst", "analyze", "anatomy", "anchor", "ancient",
+        "and", "angel", "anger", "angle", "angry", "animal", "annex", "annual", "another", "answer",
+        "ant", "antenna", "anti", "antique", "anxiety", "any", "anybody", "anyone", "anyway", "apart",
+        "apparel", "appeal", "appear", "apple", "applied", "apply", "approve", "apt", "aqua", "aquatic",
+        "arbor", "arc", "arcade", "arch", "archive", "are", "area", "arena", "argue", "arise",
+        "arm", "armed", "armor", "arms", "army", "around", "arrange", "array", "arrest", "arrival",
+        "arrive", "arrow", "art", "article", "artist", "ash", "aside", "ask", "aspect", "assault",
+        "assess", "asset", "assets", "assign", "assist", "assume", "assumed", "assure", "assured", "asthma",
+        "asylum", "ate", "atlas", "atom", "atomic", "attach", "attack", "attempt", "attend", "attract",
+        "auburn", "auction", "audio", "audit", "auditor", "aurora", "author", "auto", "autumn", "avenue",
+        "average", "avoid", "award", "aware", "away", "awesome", "awful", "axis", "babe", "baby",
+        "back", "backed", "backing", "backup", "bacon", "bad", "badge", "badly", "bag", "baker",
+        "baking", "balance", "bald", "ball", "ballet", "balloon", "ballot", "ban", "banana", "band",
+        "bang", "bank", "banking", "banner", "bar", "bare", "barely", "bargain", "barn", "barrel",
+        "barrier", "base", "based", "bases", "basic", "basin", "basis", "basket", "bass", "bat",
+        "batch", "bath", "battery", "battle", "bay", "beach", "beam", "bean", "bear", "bearing",
+        "beast", "beat", "beauty", "beaver", "because", "become", "becomes", "bed", "bedding", "bedroom",
+        "bee", "beef", "been", "beer", "before", "begin", "begun", "behalf", "behind", "being",
+        "belief", "believe", "bell", "belly", "belong", "below", "belt", "bench", "bend", "beneath",
+        "benefit", "bent", "berry", "beside", "besides", "best", "bet", "beta", "better", "betting",
+        "between", "beyond", "bias", "bicycle", "bid", "bidder", "bidding", "big", "bigger", "biggest",
+        "bike", "bikini", "bill", "billing", "billion", "bin", "binary", "bind", "binding", "bingo",
+        "biology", "bird", "birth", "bishop", "bit", "bite", "bizarre", "black", "blade", "blame",
+        "blank", "blanket", "blast", "blend", "bless", "blessed", "blind", "blink", "block", "blocked",
+        "blonde", "blood", "bloody", "bloom", "blow", "blowing", "blue", "blues", "board", "boat",
+        "boating", "body", "bold", "bolt", "bomb", "bond", "bone", "bonus", "book", "booking",
+        "boom", "boost", "boot", "booth", "boots", "border", "boring", "born", "borough", "boss",
+        "both", "bother", "bottle", "bottom", "bought", "boulder", "bound", "bouquet", "bow", "bowl",
+        "bowling", "boxing", "boy", "bracket", "brain", "brake", "branch", "brand", "brass", "brave",
+        "breach", "bread", "break", "breast", "breath", "breed", "brick", "bridal", "bride", "bridge",
+        "brief", "briefly", "briefs", "bright", "bring", "broad", "broke", "broken", "broker", "bronze",
+        "brook", "brother", "brought", "brown", "browse", "browser", "brush", "brutal", "bubble", "buck",
+        "buddy", "budget", "buffalo", "buffer", "bug", "build", "builder", "built", "bulk", "bull",
+        "bullet", "bumper", "bunch", "bundle", "bunny", "burden", "bureau", "buried", "burn", "burner",
+        "burning", "burst", "bus", "bush", "busy", "but", "butler", "butter", "button", "buttons",
+        "buy", "buyer", "buzz", "bye", "cab", "cabin", "cabinet", "cable", "cache", "cage",
+        "cake", "calcium", "call", "calling", "calm", "came", "camel", "camera", "camp", "campus",
+        "can", "canal", "cancel", "cancer", "candle", "candy", "cannon", "canon", "canvas", "canyon",
+        "cap", "capable", "cape", "capital", "captain", "capture", "car", "carbon", "card", "cardiac",
+        "care", "career", "careful", "cargo", "carol", "carpet", "carried", "carrier", "carry", "cart",
+        "cartoon", "case", "cash", "casino", "cast", "casting", "castle", "casual", "cat", "catch",
+        "cattle", "caught", "cause", "causing", "caution", "cave", "cedar", "ceiling", "cell", "cement",
+        "census", "cent", "center", "central", "century", "ceramic", "certain", "chain", "chair", "chamber",
+        "chance", "change", "channel", "chaos", "chapel", "chapter", "char", "charge", "charger", "charity",
+        "charm", "chart", "charter", "chase", "chassis", "chat", "cheap", "cheat", "check", "checked",
+        "cheese", "chef", "cheque", "cherry", "chess", "chest", "chick", "chicken", "chief", "child",
+        "china", "chip", "chips", "choice", "choir", "choose", "chorus", "chose", "chosen", "chrome",
+        "chronic", "chubby", "chuck", "church", "cinema", "circle", "circuit", "circus", "cite", "citizen",
+        "city", "civic", "civil", "claim", "clan", "clarity", "class", "classes", "classic", "clause",
+        "clay", "clean", "cleaner", "cleanup", "clear", "clearly", "clerk", "click", "client", "cliff",
+        "climate", "climb", "clinic", "clip", "clips", "clock", "clone", "close", "closed", "closely",
+        "closer", "closure", "cloth", "clothes", "cloud", "cloudy", "club", "cluster", "coach", "coal",
+        "coast", "coastal", "coat", "coated", "coating", "cod", "code", "coffee", "coin", "cold",
+        "collar", "collect", "college", "colon", "colony", "color", "colored", "colors", "column", "combat",
+        "combine", "come", "comedy", "comes", "comfort", "comic", "coming", "command", "comment", "commit",
+        "common", "commons", "compact", "company", "compare", "compete", "compile", "complex", "comply", "compute",
+        "con", "concept", "concern", "concert", "conduct", "confirm", "connect", "consent", "consist", "console",
+        "consult", "contact", "contain", "content", "contest", "context", "control", "convert", "cook", "cooking",
+        "cool", "cooler", "cooling", "cop", "cope", "copied", "copper", "copy", "coral", "cord",
+        "core", "cork", "corn", "corner", "corps", "corpus", "correct", "cost", "costume", "cottage",
+        "cotton", "could", "council", "counsel", "count", "counter", "country", "county", "couple", "coupled",
+        "coupon", "courage", "courier", "course", "court", "cove", "cover", "covered", "cow", "cowboy",
+        "crack", "cradle", "craft", "crash", "crazy", "cream", "create", "creator", "credit", "creek",
+        "crest", "crew", "cricket", "crime", "crisis", "crop", "cross", "crowd", "crown", "crucial",
+        "crude", "cruise", "cry", "crystal", "cube", "cubic", "cuisine", "cult", "culture", "cup",
+        "cure", "curious", "current", "cursor", "curve", "custody", "custom", "customs", "cut", "cute",
+        "cutting", "cycle", "cycling", "dad", "daddy", "daily", "dairy", "daisy", "dale", "dam",
+        "damage", "damages", "dame", "damn", "dance", "dancing", "danger", "dare", "dark", "dash",
+        "data", "date", "dating", "dawn", "day", "days", "dead", "deadly", "deaf", "deal",
+        "dealer", "dealing", "dealt", "dean", "dear", "death", "debate", "debt", "debut", "decade",
+        "decent", "decide", "decided", "decimal", "deck", "declare", "decline", "deep", "deeply", "deer",
+        "default", "defeat", "defence", "defend", "defense", "deficit", "define", "defined", "degree", "delay",
+        "delete", "delight", "deliver", "delta", "deluxe", "demand", "den", "denial", "dense", "density",
+        "dental", "deny", "depend", "deposit", "depot", "depth", "deputy", "derby", "derived", "desert",
+        "deserve", "design", "desire", "desired", "desk", "despite", "destiny", "destroy", "detail", "detect",
+        "develop", "deviant", "device", "devil", "devoted", "diagram", "dial", "diamond", "diary", "dice",
+        "did", "die", "diesel", "diet", "dietary", "differ", "dig", "digest", "digit", "digital",
+        "dim", "dining", "dinner", "dip", "diploma", "direct", "dirt", "dirty", "disable", "disc",
+        "discuss", "disease", "dish", "disk", "display", "dispute", "distant", "dive", "diverse", "divide",
+        "divided", "divine", "diving", "divorce", "dock", "doctor", "dodge", "doe", "does", "dog",
+        "dogs", "doing", "doll", "dollar", "domain", "dome", "don", "donate", "donated", "done",
+        "donor", "doom", "door", "dosage", "dose", "dot", "double", "doubt", "down", "dozen",
+        "draft", "drag", "dragon", "drain", "drama", "draw", "drawing", "drawn", "dream", "dress",
+        "dressed", "drew", "dried", "drill", "drink", "drive", "driven", "driver", "driving", "drop",
+        "drove", "drug", "drum", "drunk", "dry", "dual", "duck", "dude", "due", "duke",
+        "dumb", "dump", "duo", "durable", "during", "dust", "duty", "dying", "dynamic", "each",
+        "eagle", "ear", "earl", "early", "earn", "earning", "earth", "ease", "easier", "easily",
+        "east", "easter", "eastern", "easy", "eat", "eating", "ebony", "echo", "eclipse", "ecology",
+        "economy", "edge", "edit", "edition", "editor", "effect", "effects", "effort", "egg", "eight",
+        "either", "elder", "elderly", "elect", "elegant", "element", "eleven", "elite", "else", "embassy",
+        "emerald", "emperor", "empire", "employ", "empty", "enable", "end", "ended", "ending", "endless",
+        "enemy", "energy", "engage", "engaged", "engine", "enhance", "enjoy", "enlarge", "enough", "enquiry",
+        "ensure", "enter", "entire", "entity", "entry", "enzyme", "epic", "episode", "equal", "equally",
+        "equity", "era", "error", "escape", "escort", "essay", "essence", "estate", "eternal", "ethical",
+        "ethics", "ethnic", "eve", "even", "evening", "event", "ever", "every", "evident", "evil",
+        "exact", "exactly", "exam", "examine", "example", "exceed", "excel", "except", "excerpt", "excess",
+        "excited", "exclude", "excuse", "execute", "exempt", "exhaust", "exhibit", "exist", "exit", "exotic",
+        "expand", "expect", "expense", "expert", "explain", "explore", "export", "exposed", "express", "extend",
+        "extent", "extra", "extract", "extreme", "eye", "eyed", "fabric", "face", "faced", "facial",
+        "facing", "fact", "factor", "factory", "faculty", "fail", "failing", "failure", "fair", "fairly",
+        "fairy", "faith", "fake", "fall", "fallen", "falling", "false", "fame", "family", "famous",
+        "fan", "fancy", "fantasy", "far", "fare", "farm", "farmer", "farming", "fashion", "fast",
+        "faster", "fat", "fatal", "fate", "father", "fatty", "fault", "favor", "fear", "feat",
+        "feature", "fed", "federal", "fee", "feed", "feeding", "feel", "feeling", "fell", "fellow",
+        "felt", "female", "fence", "ferry", "fever", "few", "fiber", "fiction", "field", "fifteen",
+        "fifth", "fifty", "fig", "fight", "fighter", "figure", "figured", "file", "filing", "fill",
+        "filled", "filling", "film", "filter", "fin", "final", "finally", "finance", "find", "finder",
+        "finding", "fine", "finger", "finish", "finite", "fire", "fired", "firm", "first", "fiscal",
+        "fish", "fisher", "fishing", "fist", "fit", "fitness", "fitted", "fitting", "five", "fix",
+        "fixed", "flag", "flame", "flash", "flat", "flavor", "fleece", "fleet", "flesh", "flex",
+        "flight", "flip", "float", "flood", "floor", "floppy", "floral", "florist", "flour", "flow",
+        "flower", "flu", "fluid", "flush", "flux", "fly", "flyer", "flying", "foam", "focal",
+        "focus", "fog", "fold", "folder", "folding", "folk", "follow", "font", "food", "fool",
+        "foot", "footage", "for", "force", "forced", "ford", "foreign", "forest", "forever", "forge",
+        "forget", "forgot", "fork", "form", "formal", "format", "formed", "former", "forming", "formula",
+        "fort", "forth", "fortune", "forty", "forum", "forward", "fossil", "foster", "fought", "foul",
+        "found", "founder", "four", "fourth", "fox", "frame", "framed", "framing", "frank", "fraud",
+        "free", "freedom", "freely", "freeze", "freight", "fresh", "friend", "frog", "from", "front",
+        "frost", "frozen", "fruit", "fuel", "full", "fully", "fun", "fund", "funded", "funds",
+        "funeral", "funk", "funky", "funny", "fur", "further", "fusion", "future", "fuzzy", "gain",
+        "gains", "galaxy", "gale", "gallery", "game", "gaming", "gamma", "gang", "gap", "garage",
+        "garbage", "garden", "garlic", "gas", "gate", "gateway", "gather", "gauge", "gave", "gay",
+        "gazette", "gear", "geek", "gel", "gem", "gender", "gene", "general", "generic", "genesis",
+        "genetic", "genius", "genome", "genre", "gentle", "gently", "genuine", "geology", "get", "getting",
+        "ghost", "giant", "gift", "gig", "girl", "give", "given", "giving", "glad", "glance",
+        "glass", "glasses", "glen", "global", "globe", "glory", "glow", "glucose", "gnome", "goal",
+        "goat", "god", "goes", "going", "gold", "golden", "golf", "gone", "good", "goods",
+        "gore", "gospel", "gossip", "got", "gotten", "gourmet", "grab", "grace", "grad", "grade",
+        "grain", "grammar", "grand", "granny", "grant", "graph", "graphic", "grass", "grave", "gravity",
+        "gray", "great", "greater", "greatly", "green", "grew", "grey", "grid", "grill", "grip",
+        "grocery", "groove", "gross", "ground", "grounds", "group", "grove", "grow", "growing", "grown",
+        "growth", "guard", "guess", "guest", "guide", "guild", "guilty", "guitar", "gulf", "gun",
+        "guru", "guy", "gym", "habitat", "hack", "hacker", "had", "hair", "hairy", "half",
+        "hall", "halo", "ham", "hammer", "hand", "handed", "handle", "handled", "handy", "hanging",
+        "happen", "happy", "harbor", "hard", "harder", "hardly", "harm", "harmful", "harmony", "harvest",
+        "hash", "hat", "hate", "have", "haven", "hawk", "hay", "hazard", "head", "headed",
+        "header", "heading", "headset", "healing", "health", "healthy", "hear", "hearing", "heart", "hearts",
+        "heat", "heater", "heath", "heather", "heating", "heaven", "heavily", "heavy", "heel", "height",
+        "hell", "hello", "helmet", "help", "helpful", "helping", "hence", "her", "herald", "herb",
+        "herbal", "here", "hero", "herself", "hey", "hidden", "hide", "high", "higher", "highest",
+        "highly", "highway", "hill", "him", "himself", "hint", "hip", "hire", "hired", "his",
+        "history", "hit", "hobby", "hockey", "hold", "holder", "holding", "hole", "holiday", "hollow",
+        "holly", "holy", "home", "honest", "honey", "honor", "hood", "hook", "hop", "hope",
+        "hoped", "horizon", "hormone", "horn", "horror", "horse", "hose", "host", "hostel", "hosting",
+        "hot", "hotel", "hour", "hourly", "house", "housing", "how", "however", "hub", "huge",
+        "hull", "human", "humor", "hundred", "hung", "hunger", "hungry", "hunt", "hunting", "hurt",
+        "husband", "hybrid", "hygiene", "ice", "icon", "idea", "ideal", "idle", "idol", "ignore",
+        "ill", "illegal", "illness", "image", "imagine", "immune", "impact", "import", "impose", "improve",
+        "inch", "include", "income", "indeed", "index", "indexed", "indices", "indoor", "induced", "infant",
+        "inform", "initial", "injured", "injury", "ink", "inn", "inner", "input", "inquire", "inquiry",
+        "insert", "inside", "insider", "insight", "install", "instant", "instead", "insulin", "insured", "intake",
+        "integer", "intend", "intense", "intent", "inter", "interim", "into", "invalid", "invest", "invite",
+        "invoice", "involve", "ion", "iron", "island", "isle", "issue", "item", "its", "itself",
+        "ivory", "jack", "jacket", "jade", "jaguar", "jail", "jam", "jar", "jay", "jazz",
+        "jean", "jeans", "jeep", "jersey", "jet", "jewel", "jewelry", "job", "join", "joining",
+        "joint", "joke", "journal", "journey", "joy", "judge", "juice", "jump", "jungle", "junior",
+        "junk", "jury", "just", "justice", "justify", "karaoke", "karma", "keen", "keep", "keeping",
+        "kept", "kernel", "key", "kick", "kid", "kidney", "kill", "killer", "killing", "kind",
+        "king", "kingdom", "kiss", "kissing", "kit", "kitchen", "kitty", "knee", "knew", "knife",
+        "knight", "knit", "knock", "know", "knowing", "known", "lab", "label", "labor", "lace",
+        "lack", "ladder", "laden", "ladies", "lady", "laid", "lake", "lamb", "lamp", "lance",
+        "land", "landing", "lane", "lap", "large", "largely", "laser", "last", "lasting", "late",
+        "lately", "later", "latest", "latex", "latter", "laugh", "launch", "laundry", "law", "lawn",
+        "lawsuit", "lawyer", "lay", "layer", "layout", "lazy", "lead", "leader", "leading", "leaf",
+        "league", "lean", "learn", "learned", "lease", "leasing", "least", "leather", "leave", "leaves",
+        "leaving", "lecture", "led", "left", "leg", "legacy", "legal", "legally", "legend", "leisure",
+        "lemon", "lender", "length", "lens", "less", "lesser", "lesson", "let", "letter", "level",
+        "levy", "liable", "liberal", "liberty", "library", "license", "licking", "lid", "lie", "life",
+        "lift", "light", "lighter", "like", "likely", "lime", "limit", "limited", "line", "linear",
+        "lined", "link", "linked", "linking", "links", "lion", "lip", "liquid", "list", "listed",
+        "listen", "listing", "lit", "little", "live", "lived", "liver", "living", "load", "loaded",
+        "loading", "loan", "lobby", "local", "locale", "locally", "locate", "locator", "lock", "locked",
+        "locking", "lodge", "lodging", "log", "logged", "logging", "logic", "logical", "login", "logo",
+        "logos", "lone", "lonely", "long", "longer", "look", "looking", "lookup", "loop", "loose",
+        "lord", "lose", "losing", "loss", "lost", "lot", "lots", "lottery", "lotus", "loud",
+        "lounge", "love", "lovely", "lover", "loving", "low", "lower", "luck", "lucky", "luggage",
+        "lunch", "lung", "luxury", "lying", "lyric", "machine", "macro", "mad", "made", "madness",
+        "magic", "magical", "magnet", "maiden", "mail", "mailed", "mailman", "main", "mainly", "major",
+        "make", "maker", "making", "male", "mall", "mambo", "man", "manage", "manager", "mandate",
+        "manner", "manor", "manual", "many", "map", "maple", "mar", "marble", "march", "margin",
+        "marina", "marine", "mark", "marked", "marker", "market", "marking", "married", "marsh", "mart",
+        "martial", "marvel", "mask", "mason", "mass", "massage", "massive", "master", "mat", "match",
+        "mate", "math", "mating", "matrix", "matter", "mature", "maximum", "may", "maybe", "mayor",
+        "meal", "mean", "meaning", "meant", "measure", "meat", "medal", "media", "median", "medical",
+        "medium", "meet", "meeting", "member", "memo", "memory", "men", "mental", "mention", "mentor",
+        "menu", "mercury", "mercy", "mere", "merely", "merge", "merger", "merit", "merry", "mesa",
+        "mesh", "mess", "message", "met", "meta", "metal", "meter", "method", "metric", "mice",
+        "micro", "mid", "middle", "might", "mighty", "mild", "mile", "mileage", "milk", "mill",
+        "million", "mime", "mind", "mine", "mineral", "mines", "minimal", "minimum", "mining", "minor",
+        "mint", "minus", "minute", "miracle", "mirror", "miss", "missile", "missing", "mission", "mistake",
+        "mix", "mixed", "mixer", "mixture", "mobile", "mode", "model", "modern", "modify", "modular",
+        "module", "mold", "moment", "money", "monitor", "monkey", "monster", "month", "monthly", "mood",
+        "moon", "moral", "more", "morning", "moss", "most", "mostly", "motel", "mother", "motion",
+        "motor", "mount", "mounted", "mouse", "mouth", "move", "movie", "moving", "much", "mud",
+        "mug", "murder", "muscle", "museum", "music", "musical", "must", "mustang", "mutual", "myself",
+        "mystery", "myth", "nail", "naked", "name", "namely", "narrow", "nasty", "nation", "native",
+        "natural", "nature", "naughty", "naval", "navy", "near", "nearby", "nearest", "nearly", "neck",
+        "need", "needle", "needs", "neither", "neon", "nerve", "nervous", "nest", "net", "network",
+        "neural", "neutral", "never", "new", "newly", "news", "next", "nice", "nick", "nickel",
+        "night", "nights", "nil", "nine", "nirvana", "noble", "nobody", "node", "noise", "none",
+        "noon", "nor", "norm", "normal", "north", "nose", "not", "note", "noted", "nothing",
+        "notice", "notify", "notion", "nova", "novel", "novelty", "now", "nowhere", "nuclear", "nude",
+        "nuke", "null", "number", "nurse", "nursery", "nursing", "nut", "nylon", "oak", "oasis",
+        "obesity", "object", "observe", "obtain", "obvious", "occur", "ocean", "odd", "odds", "off",
+        "offense", "offer", "office", "officer", "offset", "often", "oil", "old", "older", "olive",
+        "omega", "once", "one", "ongoing", "onion", "only", "onto", "open", "opening", "opera",
+        "operate", "opinion", "opposed", "opt", "optical", "optics", "optimal", "optimum", "option", "oracle",
+        "oral", "orange", "orbit", "order", "ordered", "organ", "organic", "origin", "other", "ought",
+        "our", "ours", "out", "outcome", "outdoor", "outer", "outlet", "outline", "outlook", "output",
+        "outside", "oval", "oven", "over", "overall", "own", "owner", "oxide", "oxygen", "ozone",
+        "pace", "pack", "package", "packet", "pad", "page", "pain", "painful", "paint", "painted",
+        "pair", "pal", "palace", "pale", "palm", "pan", "panel", "panic", "pants", "paper",
+        "par", "parade", "parcel", "parent", "parish", "park", "parking", "part", "partial", "partly",
+        "partner", "party", "pass", "passage", "passing", "passion", "passive", "past", "paste", "pastor",
+        "pat", "patch", "patent", "path", "patient", "patio", "patrol", "pattern", "pay", "payable",
+        "payday", "paying", "payment", "payroll", "peace", "peak", "pearl", "peer", "pen", "penalty",
+        "pencil", "pendant", "pending", "penguin", "penny", "pension", "people", "pepper", "per", "percent",
+        "perfect", "perform", "perfume", "perhaps", "period", "permit", "person", "pest", "pet", "petite",
+        "phantom", "phase", "phases", "phoenix", "phone", "photo", "phrase", "physics", "piano", "pick",
+        "picked", "pickup", "picnic", "picture", "pie", "piece", "pierce", "pig", "pike", "pill",
+        "pillow", "pilot", "pin", "pine", "ping", "pink", "pioneer", "pipe", "pit", "pitch",
+        "pizza", "place", "plain", "plan", "plane", "planet", "planner", "plant", "plasma", "plastic",
+        "plate", "play", "player", "plaza", "please", "pledge", "plenty", "plot", "plug", "plus",
+        "pocket", "pod", "poem", "poet", "poetry", "point", "pointed", "pointer", "poison", "poker",
+        "polar", "pole", "police", "policy", "polish", "poll", "polo", "polymer", "pond", "pool",
+        "poor", "pop", "pope", "popular", "pork", "port", "portal", "porter", "portion", "pose",
+        "posing", "possess", "post", "postage", "postal", "posted", "poster", "posting", "pot", "potato",
+        "potter", "pottery", "poultry", "pound", "pour", "poverty", "powder", "power", "powered", "prairie",
+        "praise", "pray", "prayer", "precise", "predict", "prefer", "prefix", "premier", "premium", "prep",
+        "prepare", "present", "press", "pretty", "prevent", "preview", "price", "priced", "pride", "priest",
+        "primary", "prime", "prince", "print", "printed", "printer", "prior", "prison", "privacy", "private",
+        "prize", "pro", "probe", "problem", "proceed", "process", "produce", "product", "profile", "profit",
+        "program", "project", "promise", "promote", "prompt", "proof", "proper", "prophet", "propose", "protect",
+        "protein", "protest", "proudly", "prove", "proved", "proven", "provide", "proxy", "pub", "public",
+        "publish", "pull", "pulse", "pump", "punch", "punk", "puppy", "pure", "purple", "purpose",
+        "purse", "pursue", "pursuit", "push", "pushing", "put", "puzzle", "python", "quad", "qualify",
+        "quality", "quantum", "quarter", "queen", "query", "quest", "queue", "quick", "quickly", "quiet",
+        "quilt", "quit", "quite", "quiz", "quote", "rabbit", "race", "racial", "racing", "rack",
+        "radar", "radical", "radio", "radius", "rage", "raid", "rail", "railway", "rain", "rainbow",
+        "raise", "raised", "raising", "rally", "ram", "ran", "ranch", "random", "range", "ranger",
+        "ranging", "rank", "ranked", "rap", "rapid", "rapidly", "rare", "rarely", "rat", "rate",
+        "rated", "rather", "rating", "ratio", "raw", "ray", "reach", "read", "reader", "readily",
+        "reading", "ready", "real", "reality", "realize", "really", "realm", "realtor", "realty", "rear",
+        "reason", "rebate", "rebel", "rebound", "recall", "receipt", "receive", "recent", "recipe", "record",
+        "recover", "red", "redeem", "redhead", "reduce", "reduced", "reed", "reef", "reel", "refer",
+        "refine", "refined", "reflect", "reform", "refresh", "refund", "refuse", "regard", "regime", "region",
+        "regular", "reject", "relate", "related", "relax", "relay", "release", "relief", "reload", "rely",
+        "remain", "remains", "remark", "remedy", "remind", "remix", "remote", "removal", "remove", "removed",
+        "render", "renew", "renewal", "rent", "rental", "repair", "repeat", "replace", "replica", "reply",
+        "report", "reprint", "request", "require", "rescue", "reserve", "reset", "resist", "resolve", "resort",
+        "respect", "respond", "rest", "restore", "result", "resume", "retail", "retain", "retired", "retreat",
+        "return", "reunion", "reveal", "revenge", "revenue", "reverse", "review", "reward", "rhythm", "ribbon",
+        "rice", "rich", "rid", "ride", "rider", "ridge", "riding", "right", "rim", "ring",
+        "rip", "ripe", "rise", "rising", "risk", "river", "road", "rob", "robin", "robot",
+        "robust", "rock", "rocket", "rocky", "rod", "role", "roll", "rolled", "roller", "rolling",
+        "romance", "roof", "room", "root", "rope", "rose", "roster", "rotary", "rouge", "rough",
+        "roughly", "round", "route", "router", "routine", "routing", "rover", "row", "royal", "royalty",
+        "rubber", "ruby", "rug", "rule", "ruling", "run", "runner", "running", "rural", "rush",
+        "sacred", "sad", "safari", "safe", "safely", "safety", "sage", "said", "sail", "sailing",
+        "saint", "sake", "salad", "salary", "sale", "salmon", "salon", "salt", "samba", "same",
+        "sample", "sand", "sandy", "sap", "sat", "satin", "satisfy", "sauce", "savage", "save",
+        "saved", "saver", "saving", "saw", "say", "saying", "scale", "scales", "scan", "scanner",
+        "scary", "scene", "scenic", "schema", "scheme", "scholar", "school", "science", "scoop", "scope",
+        "score", "scored", "scoring", "scout", "scratch", "screen", "screw", "script", "scroll", "sea",
+        "seal", "sealed", "search", "season", "seat", "seating", "second", "secret", "section", "sector",
+        "secure", "see", "seed", "seeing", "seek", "seeker", "seeking", "seem", "seen", "segment",
+        "select", "self", "sell", "seller", "selling", "seminar", "senate", "senator", "send", "sender",
+        "sending", "senior", "sense", "sensor", "sent", "serial", "series", "serious", "serum", "serve",
+        "server", "service", "serving", "session", "set", "setting", "settle", "settled", "setup", "seven",
+        "seventh", "several", "severe", "sewing", "sex", "sexual", "sexy", "shade", "shadow", "shaft",
+        "shake", "shall", "shame", "shape", "shaped", "share", "shark", "sharp", "shaved", "she",
+        "shed", "sheep", "sheer", "sheet", "shelf", "shell", "shelter", "sheriff", "shield", "shift",
+        "shine", "ship", "shipped", "shirt", "shock", "shoe", "shoot", "shop", "shopper", "shore",
+        "short", "shorter", "shortly", "shorts", "shot", "should", "show", "shower", "showing", "shown",
+        "shut", "shuttle", "sick", "side", "sides", "sight", "sign", "signal", "silence", "silent",
+        "silicon", "silk", "silly", "silver", "similar", "simple", "simply", "sin", "since", "sing",
+        "singer", "singing", "single", "singles", "sink", "sip", "sir", "sister", "sit", "site",
+        "sitting", "six", "sixth", "size", "sized", "sizes", "skating", "ski", "skiing", "skill",
+        "skilled", "skin", "skip", "skirt", "sky", "slave", "sleep", "sleeve", "slide", "slight",
+        "slim", "slip", "slope", "slot", "slow", "slowly", "small", "smaller", "smart", "smell",
+        "smile", "smith", "smoke", "smoking", "smooth", "snake", "snap", "snow", "soap", "soccer",
+        "social", "society", "socket", "sodium", "sofa", "soft", "soil", "solar", "sold", "soldier",
+        "sole", "solely", "solid", "solo", "solve", "some", "somehow", "someone", "son", "song",
+        "sonic", "sons", "soon", "sorry", "sort", "sorted", "sought", "soul", "sound", "soup",
+        "source", "south", "spa", "space", "spam", "span", "spare", "spatial", "speak", "speaker",
+        "special", "species", "specify", "speech", "speed", "spell", "spend", "spent", "sphere", "spice",
+        "spider", "spin", "spine", "spirit", "split", "spoke", "spoken", "sponsor", "sport", "sports",
+        "spot", "spouse", "spray", "spread", "spring", "sprint", "spy", "squad", "square", "stable",
+        "stack", "stadium", "staff", "stage", "stake", "stamp", "stand", "star", "start", "starter",
+        "state", "stated", "static", "station", "status", "statute", "stay", "stayed", "stays", "steady",
+        "steal", "steam", "steel", "stem", "step", "stereo", "stick", "sticker", "sticks", "sticky",
+        "still", "stock", "stocks", "stolen", "stomach", "stone", "stood", "stop", "stopped", "storage",
+        "store", "storm", "story", "strain", "strand", "strange", "strap", "stream", "street", "streets",
+        "stress", "stretch", "strict", "strike", "string", "strip", "stroke", "strong", "struck", "stuck",
+        "stud", "student", "studied", "studio", "study", "stuff", "stuffed", "stupid", "style", "stylish",
+        "stylus", "sub", "subject", "sublime", "submit", "subtle", "succeed", "success", "such", "suck",
+        "sudden", "sue", "suffer", "sugar", "suggest", "suicide", "suit", "suite", "sum", "summary",
+        "summer", "summit", "sun", "sunny", "sunrise", "sunset", "super", "superb", "supply", "support",
+        "suppose", "supreme", "sure", "surely", "surf", "surface", "surge", "surgeon", "surgery", "surname",
+        "surplus", "survey", "survive", "suspect", "swap", "sweet", "swift", "swim", "swing", "swiss",
+        "switch", "sword", "symbol", "sync", "syntax", "system", "tab", "table", "tables", "tablet",
+        "tackle", "tactics", "tag", "tagged", "tail", "take", "taken", "taking", "tale", "talent",
+        "tales", "talk", "talking", "tall", "tan", "tank", "tap", "tape", "tar", "target",
+        "tariff", "task", "taste", "tattoo", "taught", "tax", "taxi", "tea", "teach", "teacher",
+        "team", "tear", "tech", "tee", "teen", "teenage", "teens", "teeth", "tell", "telling",
+        "temple", "ten", "tenant", "tend", "tender", "tennis", "tension", "tent", "term", "terrace",
+        "terrain", "terror", "test", "tested", "testing", "text", "textile", "texture", "than", "thank",
+        "thanks", "that", "the", "theater", "theft", "their", "them", "theme", "then", "theorem",
+        "theory", "therapy", "there", "thereby", "thermal", "these", "thesis", "they", "thick", "thin",
+        "thing", "think", "third", "thirty", "this", "those", "though", "thought", "thread", "threat",
+        "three", "throat", "through", "throw", "thrown", "thumb", "thunder", "thus", "ticket", "tide",
+        "tie", "tied", "tier", "tiger", "tight", "tile", "till", "timber", "time", "timely",
+        "timer", "times", "timing", "tin", "tiny", "tip", "tire", "tired", "tissue", "title",
+        "titled", "tobacco", "today", "toddler", "toe", "toilet", "token", "told", "toll", "tomato",
+        "ton", "tone", "toner", "tongue", "tonight", "took", "tool", "toolbox", "tooth",
+        "top", "topic", "tops", "torture", "total", "totally", "touch", "touched", "tough", "tour",
+        "touring", "tourism", "tourist", "toward", "towards", "tower", "town", "toxic", "toy", "trace",
+        "track", "tracked", "tracker", "tract", "tractor", "trade", "trader", "trading", "traffic", "tragedy",
+        "trail", "trailer", "train", "trained", "trainer", "trance", "transit", "trap", "trash", "trauma",
+        "travel", "tray", "treat", "treaty", "tree", "trek", "trend", "trial", "tribal", "tribe",
+        "tribune", "tribute", "trick", "tried", "trigger", "trim", "trio", "trip", "triple", "triumph",
+        "trivia", "trouble", "trout", "truck", "trucks", "true", "truly", "trunk", "trust", "trustee",
+        "truth", "try", "trying", "tsunami", "tub", "tube", "tuition", "tumor", "tune", "tuner",
+        "tuning", "tunnel", "turbo", "turkey", "turn", "turned", "turning", "turns", "turtle", "twelve",
+        "twenty", "twice", "twin", "twist", "twisted", "two", "type", "typical", "ugly", "ultra",
+        "unable", "uncle", "under", "undo", "unified", "uniform", "union", "unique", "unit", "united",
+        "unity", "unknown", "unless", "unlike", "unlock", "until", "unusual", "unwrap", "update", "upgrade",
+        "upload", "upon", "upper", "upset", "urban", "urge", "urgent", "usage", "use", "used",
+        "useful", "user", "usual", "usually", "utility", "utilize", "vaccine", "vacuum", "valid", "valley",
+        "value", "valued", "valve", "vampire", "van", "vanilla", "varied", "variety", "various", "vary",
+        "vast", "vat", "vault", "vector", "vehicle", "velvet", "vendor", "venture", "venue", "verbal",
+        "verify", "verse", "version", "versus", "vertex", "very", "vessel", "veteran", "via", "vice",
+        "victim", "victor", "victory", "video", "view", "viewer", "viking", "villa", "village", "vintage",
+        "vinyl", "violent", "violin", "viral", "virgin", "virtual", "virtue", "virus", "visa", "visible",
+        "vision", "visit", "visitor", "visual", "vital", "vitamin", "vocal", "voice", "void", "volt",
+        "voltage", "volume", "vote", "voting", "wage", "wages", "wagon", "wait", "waiting", "waiver",
+        "wake", "walk", "walker", "walking", "wall", "wallet", "walnut", "want", "wanting", "war",
+        "ward", "ware", "warm", "warming", "warning", "warrant", "warren", "warrior", "was", "wash",
+        "washer", "washing", "waste", "watch", "watched", "water", "watt", "wave", "wax", "way",
+        "ways", "weak", "wealth", "weapon", "wear", "wearing", "weather", "web", "wed", "wedding",
+        "weed", "week", "weekend", "weekly", "weight", "weird", "welcome", "welding", "welfare", "well",
+        "went", "were", "west", "western", "wet", "whale", "what", "wheat", "wheel", "when",
+        "where", "whereas", "whether", "which", "while", "whilst", "white", "who", "whole", "whom",
+        "whose", "why", "wicked", "wide", "widely", "width", "wife", "wild", "will", "willing",
+        "willow", "win", "wind", "window", "wine", "wing", "winner", "winning", "winter", "wire",
+        "wired", "wiring", "wisdom", "wise", "wish", "wishing", "wit", "witch", "with", "within",
+        "without", "witness", "wizard", "wolf", "woman", "won", "wonder", "wood", "wooden", "wool",
+        "word", "work", "worked", "worker", "working", "workout", "works", "world", "worm", "worn",
+        "worried", "worry", "worse", "worship", "worst", "worth", "worthy", "would", "wound", "wow",
+        "wrap", "wrapped", "wrist", "write", "writer", "writing", "written", "wrong", "wrote", "yacht",
+        "yang", "yard", "yarn", "yeah", "year", "yearly", "yeast", "yellow", "yen", "yes",
+        "yet", "yield", "yoga", "you", "young", "younger", "your", "yours", "youth", "zero",
+        "zinc", "zip", "zone", "zoning", "zoo", "zoom"
+      ];
+
+      var ANSWERS = [
+        "ability", "able", "abroad", "absence", "absent", "abuse", "academy", "accent", "accept", "access",
+        "account", "accused", "ace", "achieve", "acid", "acne", "acquire", "acre", "acrobat", "acrylic",
+        "act", "acting", "action", "active", "actor", "actress", "actual", "acute", "adapter", "add",
+        "added", "address", "adjust", "admit", "adobe", "adopt", "adopted", "adult", "advance", "adverse",
+        "advert", "advice", "advise", "advised", "advisor", "aerial", "affair", "affect", "afford", "afraid",
+        "age", "aged", "agency", "agenda", "agent", "aging", "ago", "agree", "agreed", "ahead",
+        "aid", "aim", "air", "airport", "alarm", "album", "alcohol", "alert", "algebra", "alias",
+        "alien", "align", "alike", "alive", "allergy", "allied", "allow", "alloy", "alone", "alpha",
+        "alpine", "alter", "alto", "alumni", "amateur", "amazing", "amber", "ambient", "amend", "amino",
+        "amount", "analyst", "analyze", "anatomy", "anchor", "ancient", "angel", "anger", "angle", "angry",
+        "animal", "annex", "annual", "answer", "ant", "antenna", "anti", "antique", "anxiety", "apart",
+        "apparel", "appeal", "appear", "apple", "applied", "apply", "approve", "apt", "aqua", "aquatic",
+        "arbor", "arc", "arcade", "arch", "archive", "area", "arena", "argue", "arise", "arm",
+        "armed", "armor", "arms", "army", "arrange", "array", "arrest", "arrival", "arrive", "arrow",
+        "art", "article", "artist", "ash", "aside", "ask", "aspect", "assault", "assess", "asset", "assign",
+        "assist", "assume", "assumed", "assure", "assured", "asthma", "asylum", "ate", "atlas", "atom",
+        "atomic", "attach", "attack", "attempt", "attend", "attract", "auburn", "auction", "audio", "audit",
+        "auditor", "aurora", "author", "auto", "autumn", "avenue", "average", "avoid", "award", "aware",
+        "away", "awesome", "awful", "axis", "babe", "baby", "back", "backed", "backing", "backup",
+        "bacon", "bad", "badge", "badly", "bag", "baker", "baking", "balance", "bald", "ball",
+        "ballet", "balloon", "ballot", "ban", "banana", "band", "bang", "bank", "banking", "banner",
+        "bar", "bare", "barely", "bargain", "barn", "barrel", "barrier", "base", "based", "basic",
+        "basin", "basis", "basket", "bass", "bat", "batch", "bath", "battery", "battle", "bay",
+        "beach", "beam", "bean", "bear", "bearing", "beast", "beat", "beauty", "beaver", "become",
+        "bed", "bedding", "bedroom", "bee", "beef", "beer", "begin", "begun", "behalf", "belief",
+        "believe", "bell", "belly", "belong", "belt", "bench", "bend", "benefit", "bent", "berry",
+        "best", "bet", "beta", "better", "betting", "bias", "bicycle", "bid", "bidder", "bidding",
+        "big", "bigger", "biggest", "bike", "bikini", "bill", "billing", "bin", "binary", "bind",
+        "binding", "bingo", "biology", "bird", "birth", "bishop", "bit", "bite", "bizarre", "black",
+        "blade", "blame", "blank", "blanket", "blast", "blend", "bless", "blessed", "blind", "blink",
+        "block", "blocked", "blonde", "blood", "bloody", "bloom", "blow", "blowing", "blue", "board",
+        "boat", "boating", "body", "bold", "bolt", "bomb", "bond", "bone", "bonus", "book",
+        "booking", "boom", "boost", "boot", "booth", "border", "boring", "born", "borough", "boss",
+        "bother", "bottle", "bottom", "bought", "boulder", "bound", "bouquet", "bow", "bowl", "bowling",
+        "boxing", "boy", "bracket", "brain", "brake", "branch", "brand", "brass", "brave", "breach",
+        "bread", "break", "breast", "breath", "breed", "brick", "bridal", "bride", "bridge", "brief",
+        "briefly", "bright", "bring", "broad", "broke", "broken", "broker", "bronze", "brook", "brother",
+        "brought", "brown", "browse", "browser", "brush", "brutal", "bubble", "buck", "buddy", "budget",
+        "buffalo", "buffer", "bug", "build", "builder", "built", "bulk", "bull", "bullet", "bumper",
+        "bunch", "bundle", "bunny", "burden", "bureau", "buried", "burn", "burner", "burning", "burst",
+        "bus", "bush", "busy", "butler", "butter", "button", "buy", "buyer", "buzz", "bye",
+        "cab", "cabin", "cabinet", "cable", "cache", "cage", "cake", "calcium", "call", "calling",
+        "calm", "came", "camel", "camera", "camp", "campus", "can", "canal", "cancel", "cancer",
+        "candle", "candy", "cannon", "canon", "canvas", "canyon", "cap", "capable", "cape", "capital",
+        "captain", "capture", "car", "carbon", "card", "cardiac", "care", "career", "careful", "cargo",
+        "carol", "carpet", "carried", "carrier", "carry", "cart", "cartoon", "case", "cash", "casino",
+        "cast", "casting", "castle", "casual", "cat", "catch", "cattle", "caught", "cause", "causing",
+        "caution", "cave", "cedar", "ceiling", "cell", "cement", "census", "cent", "center", "central",
+        "century", "ceramic", "certain", "chain", "chair", "chamber", "chance", "change", "channel", "chaos",
+        "chapel", "chapter", "char", "charge", "charger", "charity", "charm", "chart", "charter", "chase",
+        "chassis", "chat", "cheap", "cheat", "check", "checked", "cheese", "chef", "cheque", "cherry",
+        "chess", "chest", "chick", "chicken", "chief", "child", "china", "chip", "choice", "choir",
+        "choose", "chorus", "chose", "chosen", "chrome", "chronic", "chubby", "chuck", "church", "cinema",
+        "circle", "circuit", "circus", "cite", "citizen", "city", "civic", "civil", "claim", "clan",
+        "clarity", "class", "classic", "clause", "clay", "clean", "cleaner", "cleanup", "clear", "clearly",
+        "clerk", "click", "client", "cliff", "climate", "climb", "clinic", "clip", "clock", "clone",
+        "close", "closed", "closely", "closer", "closure", "cloth", "cloud", "cloudy", "club", "cluster",
+        "coach", "coal", "coast", "coastal", "coat", "coated", "coating", "cod", "code", "coffee",
+        "coin", "cold", "collar", "collect", "college", "colon", "colony", "color", "colored", "column",
+        "combat", "combine", "come", "comedy", "comfort", "comic", "coming", "command", "comment", "commit",
+        "common", "compact", "company", "compare", "compete", "compile", "complex", "comply", "compute", "con",
+        "concept", "concern", "concert", "conduct", "confirm", "connect", "consent", "consist", "console", "consult",
+        "contact", "contain", "content", "contest", "context", "control", "convert", "cook", "cooking", "cool",
+        "cooler", "cooling", "cop", "cope", "copied", "copper", "copy", "coral", "cord", "core",
+        "cork", "corn", "corner", "corps", "corpus", "correct", "cost", "costume", "cottage", "cotton",
+        "could", "council", "counsel", "count", "counter", "country", "county", "couple", "coupled", "coupon",
+        "courage", "courier", "course", "court", "cove", "cover", "covered", "cow", "cowboy", "crack",
+        "cradle", "craft", "crash", "crazy", "cream", "create", "creator", "credit", "creek", "crest",
+        "crew", "cricket", "crime", "crisis", "crop", "cross", "crowd", "crown", "crucial", "crude",
+        "cruise", "cry", "crystal", "cube", "cubic", "cuisine", "cult", "culture", "cup", "cure",
+        "curious", "current", "cursor", "curve", "custody", "custom", "cut", "cute", "cutting", "cycle",
+        "cycling", "dad", "daddy", "daily", "dairy", "daisy", "dale", "dam", "damage", "dame",
+        "damn", "dance", "dancing", "danger", "dare", "dark", "dash", "data", "date", "dating",
+        "dawn", "day", "dead", "deadly", "deaf", "deal", "dealer", "dealing", "dealt", "dean",
+        "dear", "death", "debate", "debt", "debut", "decade", "decent", "decide", "decided", "decimal",
+        "deck", "declare", "decline", "deep", "deeply", "deer", "default", "defeat", "defence", "defend",
+        "defense", "deficit", "define", "defined", "degree", "delay", "delete", "delight", "deliver", "delta",
+        "deluxe", "demand", "den", "denial", "dense", "density", "dental", "deny", "depend", "deposit",
+        "depot", "depth", "deputy", "derby", "derived", "desert", "deserve", "design", "desire", "desired",
+        "desk", "despite", "destiny", "destroy", "detail", "detect", "develop", "deviant", "device", "devil",
+        "devoted", "diagram", "dial", "diamond", "diary", "dice", "die", "diesel", "diet", "dietary",
+        "differ", "dig", "digest", "digit", "digital", "dim", "dining", "dinner", "dip", "diploma",
+        "direct", "dirt", "dirty", "disable", "disc", "discuss", "disease", "dish", "disk", "display",
+        "dispute", "distant", "dive", "diverse", "divide", "divided", "divine", "diving", "divorce", "dock",
+        "doctor", "dodge", "doe", "dog", "doll", "dollar", "domain", "dome", "don", "donate",
+        "donated", "donor", "doom", "door", "dosage", "dose", "dot", "double", "doubt", "down",
+        "draft", "drag", "dragon", "drain", "drama", "draw", "drawing", "drawn", "dream", "dress",
+        "dressed", "drew", "dried", "drill", "drink", "drive", "driven", "driver", "driving", "drop",
+        "drove", "drug", "drum", "drunk", "dry", "dual", "duck", "dude", "due", "duke",
+        "dumb", "dump", "duo", "durable", "dust", "duty", "dying", "dynamic", "eagle", "ear",
+        "earl", "early", "earn", "earning", "earth", "ease", "easier", "easily", "east", "easter",
+        "eastern", "easy", "eat", "eating", "ebony", "echo", "eclipse", "ecology", "economy", "edge",
+        "edit", "edition", "editor", "effect", "effort", "egg", "elder", "elderly", "elect", "elegant",
+        "element", "elite", "else", "embassy", "emerald", "emperor", "empire", "employ", "empty", "enable",
+        "end", "ended", "ending", "endless", "enemy", "energy", "engage", "engaged", "engine", "enhance",
+        "enjoy", "enlarge", "enquiry", "ensure", "enter", "entire", "entity", "entry", "enzyme", "epic",
+        "episode", "equal", "equally", "equity", "era", "error", "escape", "escort", "essay", "essence",
+        "estate", "eternal", "ethical", "ethics", "ethnic", "eve", "even", "evening", "event", "evident",
+        "evil", "exact", "exactly", "exam", "examine", "example", "exceed", "excel", "except", "excerpt",
+        "excess", "excited", "exclude", "excuse", "execute", "exempt", "exhaust", "exhibit", "exist", "exit",
+        "exotic", "expand", "expect", "expense", "expert", "explain", "explore", "export", "exposed", "express",
+        "extend", "extent", "extra", "extract", "extreme", "eye", "eyed", "fabric", "face", "faced",
+        "facial", "facing", "fact", "factor", "factory", "faculty", "fail", "failing", "failure", "fair",
+        "fairly", "fairy", "faith", "fake", "fall", "fallen", "falling", "false", "fame", "family",
+        "famous", "fan", "fancy", "fantasy", "far", "fare", "farm", "farmer", "farming", "fashion",
+        "fast", "faster", "fat", "fatal", "fate", "father", "fatty", "fault", "favor", "fear",
+        "feat", "feature", "fed", "federal", "fee", "feed", "feeding", "feel", "feeling", "fell",
+        "fellow", "felt", "female", "fence", "ferry", "fever", "fiber", "fiction", "field", "fifteen",
+        "fig", "fight", "fighter", "figure", "figured", "file", "filing", "fill", "filled", "filling",
+        "film", "filter", "fin", "final", "finally", "finance", "find", "finder", "finding", "fine",
+        "finger", "finish", "finite", "fire", "fired", "firm", "fiscal", "fish", "fisher", "fishing",
+        "fist", "fit", "fitness", "fitted", "fitting", "fix", "fixed", "flag", "flame", "flash",
+        "flat", "flavor", "fleece", "fleet", "flesh", "flex", "flight", "flip", "float", "flood",
+        "floor", "floppy", "floral", "florist", "flour", "flow", "flower", "flu", "fluid", "flush",
+        "flux", "fly", "flyer", "flying", "foam", "focal", "focus", "fog", "fold", "folder",
+        "folding", "folk", "follow", "font", "food", "fool", "foot", "footage", "force", "forced",
+        "ford", "foreign", "forest", "forever", "forge", "forget", "forgot", "fork", "form", "formal",
+        "format", "formed", "former", "forming", "formula", "fort", "forth", "fortune", "forum", "forward",
+        "fossil", "foster", "fought", "foul", "found", "founder", "fox", "frame", "framed", "framing",
+        "frank", "fraud", "free", "freedom", "freely", "freeze", "freight", "fresh", "friend", "frog",
+        "front", "frost", "frozen", "fruit", "fuel", "full", "fun", "fund", "funded", "funeral",
+        "funk", "funky", "funny", "fur", "further", "fusion", "future", "fuzzy", "gain", "galaxy",
+        "gale", "gallery", "game", "gaming", "gamma", "gang", "gap", "garage", "garbage", "garden",
+        "garlic", "gas", "gate", "gateway", "gather", "gauge", "gave", "gay", "gazette", "gear",
+        "geek", "gel", "gem", "gender", "gene", "general", "generic", "genesis", "genetic", "genius",
+        "genome", "genre", "gentle", "gently", "genuine", "geology", "get", "getting", "ghost", "giant",
+        "gift", "gig", "girl", "give", "given", "giving", "glad", "glance", "glass", "glen",
+        "global", "globe", "glory", "glow", "glucose", "gnome", "goal", "goat", "god", "goes",
+        "going", "gold", "golden", "golf", "gone", "good", "goods", "gore", "gospel", "gossip", "got",
+        "gotten", "gourmet", "grab", "grace", "grad", "grade", "grain", "grammar", "grand", "granny",
+        "grant", "graph", "graphic", "grass", "grave", "gravity", "gray", "great", "greater", "greatly",
+        "green", "grew", "grey", "grid", "grill", "grip", "grocery", "groove", "gross", "ground",
+        "group", "grove", "grow", "growing", "grown", "growth", "guard", "guess", "guest", "guide",
+        "guild", "guilty", "guitar", "gulf", "gun", "guru", "guy", "gym", "habitat", "hack",
+        "hacker", "hair", "hairy", "hall", "halo", "ham", "hammer", "hand", "handed", "handle",
+        "handled", "handy", "hanging", "happen", "happy", "harbor", "hard", "harder", "hardly", "harm",
+        "harmful", "harmony", "harvest", "hash", "hat", "hate", "haven", "hawk", "hay", "hazard",
+        "head", "headed", "header", "heading", "headset", "healing", "health", "healthy", "hear", "hearing",
+        "heart", "heat", "heater", "heath", "heather", "heating", "heaven", "heavily", "heavy", "heel",
+        "height", "hell", "hello", "helmet", "help", "helpful", "helping", "herald", "herb", "herbal",
+        "hero", "hey", "hidden", "hide", "high", "higher", "highest", "highly", "highway", "hill",
+        "hint", "hip", "hire", "hired", "history", "hit", "hobby", "hockey", "hold", "holder",
+        "holding", "hole", "holiday", "hollow", "holly", "holy", "home", "honest", "honey", "honor",
+        "hood", "hook", "hop", "hope", "hoped", "horizon", "hormone", "horn", "horror", "horse",
+        "hose", "host", "hostel", "hosting", "hot", "hotel", "hour", "hourly", "house", "housing",
+        "hub", "huge", "hull", "human", "humor", "hung", "hunger", "hungry", "hunt", "hunting",
+        "hurt", "husband", "hybrid", "hygiene", "ice", "icon", "idea", "ideal", "idle", "idol",
+        "ignore", "ill", "illegal", "illness", "image", "imagine", "immune", "impact", "import", "impose",
+        "improve", "inch", "include", "income", "index", "indexed", "indices", "indoor", "induced", "infant",
+        "inform", "initial", "injured", "injury", "ink", "inn", "inner", "input", "inquire", "inquiry",
+        "insert", "inside", "insider", "insight", "install", "instant", "instead", "insulin", "insured", "intake",
+        "integer", "intend", "intense", "intent", "inter", "interim", "invalid", "invest", "invite", "invoice",
+        "involve", "ion", "iron", "island", "isle", "issue", "item", "ivory", "jack", "jacket", "jade",
+        "jaguar", "jail", "jam", "jar", "jay", "jazz", "jean", "jeans", "jeep", "jersey", "jet",
+        "jewel", "jewelry", "job", "join", "joining", "joint", "joke", "journal", "journey", "joy",
+        "judge", "juice", "jump", "jungle", "junior", "junk", "jury", "justice", "justify", "karaoke",
+        "karma", "keen", "keep", "keeping", "kept", "kernel", "key", "kick", "kid", "kidney",
+        "kill", "killer", "killing", "kind", "king", "kingdom", "kiss", "kissing", "kit", "kitchen",
+        "kitty", "knee", "knew", "knife", "knight", "knit", "knock", "know", "knowing", "known",
+        "lab", "label", "labor", "lace", "lack", "ladder", "laden", "ladies", "lady", "laid",
+        "lake", "lamb", "lamp", "lance", "land", "landing", "lane", "lap", "large", "largely",
+        "laser", "last", "lasting", "late", "lately", "later", "latest", "latex", "latter", "laugh",
+        "launch", "laundry", "law", "lawn", "lawsuit", "lawyer", "lay", "layer", "layout", "lazy",
+        "lead", "leader", "leading", "leaf", "league", "lean", "learn", "learned", "lease", "leasing",
+        "leather", "leave", "leaving", "lecture", "led", "left", "leg", "legacy", "legal", "legally",
+        "legend", "leisure", "lemon", "lender", "length", "lens", "lesser", "lesson", "let", "letter",
+        "level", "levy", "liable", "liberal", "liberty", "library", "license", "licking", "lid", "lie",
+        "life", "lift", "light", "lighter", "like", "lime", "limit", "limited", "line", "linear",
+        "lined", "link", "linked", "linking", "lion", "lip", "liquid", "list", "listed", "listen",
+        "listing", "lit", "little", "live", "lived", "liver", "living", "load", "loaded", "loading",
+        "loan", "lobby", "local", "locale", "locally", "locate", "locator", "lock", "locked", "locking",
+        "lodge", "lodging", "log", "logged", "logging", "logic", "logical", "login", "logo", "lone",
+        "lonely", "long", "longer", "look", "looking", "lookup", "loop", "loose", "lord", "lose",
+        "losing", "loss", "lost", "lot", "lots", "lottery", "lotus", "loud", "lounge", "love", "lovely",
+        "lover", "loving", "low", "lower", "luck", "lucky", "luggage", "lunch", "lung", "luxury",
+        "lying", "lyric", "machine", "macro", "mad", "made", "madness", "magic", "magical", "magnet",
+        "maiden", "mail", "mailed", "mailman", "main", "major", "make", "maker", "making", "male",
+        "mall", "mambo", "man", "manage", "manager", "mandate", "manner", "manor", "manual", "map",
+        "maple", "mar", "marble", "march", "margin", "marina", "marine", "mark", "marked", "marker",
+        "market", "marking", "married", "marsh", "mart", "martial", "marvel", "mask", "mason", "mass",
+        "massage", "massive", "master", "mat", "match", "mate", "math", "mating", "matrix", "matter",
+        "mature", "maximum", "mayor", "meal", "mean", "meaning", "meant", "measure", "meat", "medal",
+        "media", "median", "medical", "medium", "meet", "meeting", "member", "memo", "memory", "men",
+        "mental", "mention", "mentor", "menu", "mercury", "mercy", "mere", "merge", "merger", "merit",
+        "merry", "mesa", "mesh", "mess", "message", "met", "meta", "metal", "meter", "method",
+        "metric", "mice", "micro", "mid", "middle", "mighty", "mild", "mile", "mileage", "milk",
+        "mill", "mime", "mind", "mine", "mineral", "minimal", "minimum", "mining", "minor", "mint",
+        "minus", "minute", "miracle", "mirror", "miss", "missile", "missing", "mission", "mistake", "mix",
+        "mixed", "mixer", "mixture", "mobile", "mode", "model", "modern", "modify", "modular", "module",
+        "mold", "moment", "money", "monitor", "monkey", "monster", "month", "monthly", "mood", "moon",
+        "moral", "morning", "moss", "motel", "mother", "motion", "motor", "mount", "mounted", "mouse",
+        "mouth", "move", "movie", "moving", "mud", "mug", "murder", "muscle", "museum", "music",
+        "musical", "mustang", "mutual", "mystery", "myth", "nail", "naked", "name", "narrow", "nasty",
+        "nation", "native", "natural", "nature", "naughty", "naval", "navy", "near", "nearby", "nearest",
+        "neck", "need", "needle", "neon", "nerve", "nervous", "nest", "net", "network", "neural",
+        "neutral", "new", "newly", "next", "nice", "nick", "nickel", "night", "nil", "nirvana",
+        "noble", "node", "noise", "noon", "norm", "normal", "north", "nose", "note", "noted",
+        "notice", "notify", "notion", "nova", "novel", "novelty", "now", "nuclear", "nude", "nuke",
+        "null", "number", "nurse", "nursery", "nursing", "nut", "nylon", "oak", "oasis", "obesity",
+        "object", "observe", "obtain", "obvious", "occur", "ocean", "odd", "off", "offense", "offer",
+        "office", "officer", "offset", "oil", "old", "older", "olive", "omega", "ongoing", "onion",
+        "open", "opening", "opera", "operate", "opinion", "opposed", "opt", "optical", "optics", "optimal",
+        "optimum", "option", "oracle", "oral", "orange", "orbit", "order", "ordered", "organ", "organic",
+        "origin", "ought", "out", "outcome", "outdoor", "outer", "outlet", "outline", "outlook", "output",
+        "outside", "oval", "oven", "overall", "owner", "oxide", "oxygen", "ozone", "pace", "pack",
+        "package", "packet", "pad", "page", "pain", "painful", "paint", "painted", "pair", "pal",
+        "palace", "pale", "palm", "pan", "panel", "panic", "pants", "paper", "par", "parade",
+        "parcel", "parent", "parish", "park", "parking", "part", "partial", "partner", "party", "pass",
+        "passage", "passing", "passion", "passive", "past", "paste", "pastor", "pat", "patch", "patent",
+        "path", "patient", "patio", "patrol", "pattern", "pay", "payable", "payday", "paying", "payment",
+        "payroll", "peace", "peak", "pearl", "peer", "pen", "penalty", "pencil", "pendant", "pending",
+        "penguin", "penny", "pension", "people", "pepper", "percent", "perfect", "perform", "perfume", "period",
+        "permit", "person", "pest", "pet", "petite", "phantom", "phase", "phases", "phoenix", "phone",
+        "photo", "phrase", "physics", "piano", "pick", "picked", "pickup", "picnic", "picture", "pie",
+        "piece", "pierce", "pig", "pike", "pill", "pillow", "pilot", "pin", "pine", "ping", "pink",
+        "pioneer", "pipe", "pit", "pitch", "pizza", "place", "plain", "plan", "plane", "planet",
+        "planner", "plant", "plasma", "plastic", "plate", "play", "player", "plaza", "please", "pledge",
+        "plenty", "plot", "plug", "plus", "pocket", "pod", "poem", "poet", "poetry", "point",
+        "pointed", "pointer", "poison", "poker", "polar", "pole", "police", "policy", "polish", "poll",
+        "polo", "polymer", "pond", "pool", "poor", "pop", "pope", "popular", "pork", "port",
+        "portal", "porter", "portion", "pose", "posing", "possess", "post", "postage", "postal", "posted",
+        "poster", "posting", "pot", "potato", "potter", "pottery", "poultry", "pound", "pour", "poverty",
+        "powder", "power", "powered", "prairie", "praise", "pray", "prayer", "precise", "predict", "prefer",
+        "prefix", "premier", "premium", "prep", "prepare", "present", "press", "pretty", "prevent", "preview",
+        "price", "priced", "pride", "priest", "primary", "prime", "prince", "print", "printed", "printer",
+        "prior", "prison", "privacy", "private", "prize", "pro", "probe", "problem", "proceed", "process",
+        "produce", "product", "profile", "profit", "program", "project", "promise", "promote", "prompt", "proof",
+        "proper", "prophet", "propose", "protect", "protein", "protest", "proudly", "prove", "proved", "proven",
+        "provide", "proxy", "pub", "public", "publish", "pull", "pulse", "pump", "punch", "punk",
+        "puppy", "pure", "purple", "purpose", "purse", "pursue", "pursuit", "push", "pushing", "put",
+        "puzzle", "python", "quad", "qualify", "quality", "quantum", "quarter", "queen", "query", "quest",
+        "queue", "quick", "quickly", "quiet", "quilt", "quit", "quiz", "quote", "rabbit", "race",
+        "racial", "racing", "rack", "radar", "radical", "radio", "radius", "rage", "raid", "rail",
+        "railway", "rain", "rainbow", "raise", "raised", "raising", "rally", "ram", "ran", "ranch",
+        "random", "range", "ranger", "ranging", "rank", "ranked", "rap", "rapid", "rapidly", "rare",
+        "rarely", "rat", "rate", "rated", "rating", "ratio", "raw", "ray", "reach", "read",
+        "reader", "readily", "reading", "ready", "real", "reality", "realize", "realm", "realtor", "realty",
+        "rear", "reason", "rebate", "rebel", "rebound", "recall", "receipt", "receive", "recent", "recipe",
+        "record", "recover", "red", "redeem", "redhead", "reduce", "reduced", "reed", "reef", "reel",
+        "refer", "refine", "refined", "reflect", "reform", "refresh", "refund", "refuse", "regard", "regime",
+        "region", "regular", "reject", "relate", "related", "relax", "relay", "release", "relief", "reload",
+        "rely", "remain", "remark", "remedy", "remind", "remix", "remote", "removal", "remove", "removed",
+        "render", "renew", "renewal", "rent", "rental", "repair", "repeat", "replace", "replica", "reply",
+        "report", "reprint", "request", "require", "rescue", "reserve", "reset", "resist", "resolve", "resort",
+        "respect", "respond", "rest", "restore", "result", "resume", "retail", "retain", "retired", "retreat",
+        "return", "reunion", "reveal", "revenge", "revenue", "reverse", "review", "reward", "rhythm", "ribbon",
+        "rice", "rich", "rid", "ride", "rider", "ridge", "riding", "right", "rim", "ring",
+        "rip", "ripe", "rise", "rising", "risk", "river", "road", "rob", "robin", "robot",
+        "robust", "rock", "rocket", "rocky", "rod", "role", "roll", "rolled", "roller", "rolling",
+        "romance", "roof", "room", "root", "rope", "rose", "roster", "rotary", "rouge", "rough",
+        "roughly", "round", "route", "router", "routine", "routing", "rover", "row", "royal", "royalty",
+        "rubber", "ruby", "rug", "rule", "ruling", "run", "runner", "running", "rural", "rush",
+        "sacred", "sad", "safari", "safe", "safely", "safety", "sage", "said", "sail", "sailing",
+        "saint", "sake", "salad", "salary", "sale", "salmon", "salon", "salt", "samba", "sample",
+        "sand", "sandy", "sap", "sat", "satin", "satisfy", "sauce", "savage", "save", "saved",
+        "saver", "saving", "saw", "say", "saying", "scale", "scales", "scan", "scanner", "scary",
+        "scene", "scenic", "schema", "scheme", "scholar", "school", "science", "scoop", "scope", "score",
+        "scored", "scoring", "scout", "scratch", "screen", "screw", "script", "scroll", "sea",
+        "seal", "sealed", "search", "season", "seat", "seating", "secret", "section", "sector", "secure",
+        "see", "seed", "seeing", "seek", "seeker", "seeking", "seem", "seen", "segment", "select",
+        "self", "sell", "seller", "selling", "seminar", "senate", "senator", "send", "sender",
+        "sending", "senior", "sense", "sensor", "sent", "serial", "series", "serious", "serum", "serve",
+        "server", "service", "serving", "session", "set", "setting", "settle", "settled", "setup", "seven",
+        "seventh", "several", "severe", "sewing", "sex", "sexual", "sexy", "shade", "shadow", "shaft",
+        "shake", "shall", "shame", "shape", "shaped", "share", "shark", "sharp", "shaved", "she",
+        "shed", "sheep", "sheer", "sheet", "shelf", "shell", "shelter", "sheriff", "shield", "shift",
+        "shine", "ship", "shipped", "shirt", "shock", "shoe", "shoot", "shop", "shopper", "shore",
+        "short", "shorter", "shortly", "shorts", "shot", "should", "show", "shower", "showing", "shown",
+        "shut", "shuttle", "sick", "side", "sight", "sign", "signal", "silence", "silent", "silicon",
+        "silk", "silly", "silver", "similar", "simple", "sin", "sing", "singer", "singing", "single",
+        "sink", "sip", "sir", "sister", "sit", "site", "sitting", "size", "sized", "skating",
+        "ski", "skiing", "skill", "skilled", "skin", "skip", "skirt", "sky", "slave", "sleep",
+        "sleeve", "slide", "slight", "slim", "slip", "slope", "slot", "slow", "slowly", "small",
+        "smaller", "smart", "smell", "smile", "smith", "smoke", "smoking", "smooth", "snake", "snap",
+        "snow", "soap", "soccer", "social", "society", "socket", "sodium", "sofa", "soft", "soil",
+        "solar", "sold", "soldier", "sole", "solely", "solid", "solo", "solve", "son", "song",
+        "sonic", "soon", "sorry", "sort", "sorted", "sought", "soul", "sound", "soup", "source",
+        "south", "spa", "space", "spam", "span", "spare", "spatial", "speak", "speaker", "special",
+        "species", "specify", "speech", "speed", "spell", "spend", "spent", "sphere", "spice", "spider",
+        "spin", "spine", "spirit", "split", "spoke", "spoken", "sponsor", "sport", "spot", "spouse",
+        "spray", "spread", "spring", "sprint", "spy", "squad", "square", "stable", "stack", "stadium",
+        "staff", "stage", "stake", "stamp", "stand", "star", "start", "starter", "state", "stated",
+        "static", "station", "status", "statute", "stay", "stayed", "steady", "steal", "steam", "steel",
+        "stem", "step", "stereo", "stick", "sticker", "sticky", "stock", "stolen", "stomach", "stone",
+        "stood", "stop", "stopped", "storage", "store", "storm", "story", "strain", "strand", "strange",
+        "strap", "stream", "street", "stress", "stretch", "strict", "strike", "string", "strip", "stroke",
+        "strong", "struck", "stuck", "stud", "student", "studied", "studio", "study", "stuff", "stuffed",
+        "stupid", "style", "stylish", "stylus", "sub", "subject", "sublime", "submit", "subtle", "succeed",
+        "success", "suck", "sudden", "sue", "suffer", "sugar", "suggest", "suicide", "suit", "suite",
+        "sum", "summary", "summer", "summit", "sun", "sunny", "sunrise", "sunset", "super", "superb",
+        "supply", "support", "suppose", "supreme", "sure", "surely", "surf", "surface", "surge", "surgeon",
+        "surgery", "surname", "surplus", "survey", "survive", "suspect", "swap", "sweet", "swift", "swim",
+        "swing", "swiss", "switch", "sword", "symbol", "sync", "syntax", "system", "tab", "table",
+        "tablet", "tackle", "tactics", "tag", "tagged", "tail", "take", "taken", "taking", "tale",
+        "talent", "talk", "talking", "tall", "tan", "tank", "tap", "tape", "tar", "target",
+        "tariff", "task", "taste", "tattoo", "taught", "tax", "taxi", "tea", "teach", "teacher",
+        "team", "tear", "tech", "tee", "teen", "teenage", "teens", "teeth", "tell", "telling",
+        "temple", "tenant", "tend", "tender", "tennis", "tension", "tent", "term", "terrace", "terrain",
+        "terror", "test", "tested", "testing", "text", "textile", "texture", "thank", "theater", "theft",
+        "theme", "theorem", "theory", "therapy", "thereby", "thermal", "thesis", "thick", "thin", "thing",
+        "think", "thought", "thread", "threat", "throat", "throw", "thrown", "thumb", "thunder", "ticket",
+        "tide", "tie", "tied", "tier", "tiger", "tight", "tile", "till", "timber", "time", "timely",
+        "timer", "timing", "tin", "tiny", "tip", "tire", "tired", "tissue", "title", "titled",
+        "tobacco", "today", "toddler", "toe", "toilet", "token", "told", "toll", "tomato", "ton",
+        "tone", "toner", "tongue", "tonight", "took", "tool", "toolbox", "tooth", "top", "topic",
+        "torture", "total", "totally", "touch", "touched", "tough", "tour", "touring", "tourism", "tourist",
+        "tower", "town", "toxic", "toy", "trace", "track", "tracked", "tracker", "tract", "tractor",
+        "trade", "trader", "trading", "traffic", "tragedy", "trail", "trailer", "train", "trained", "trainer",
+        "trance", "transit", "trap", "trash", "trauma", "travel", "tray", "treat", "treaty", "tree",
+        "trek", "trend", "trial", "tribal", "tribe", "tribune", "tribute", "trick", "tried", "trigger",
+        "trim", "trio", "trip", "triple", "triumph", "trivia", "trouble", "trout", "truck", "true",
+        "trunk", "trust", "trustee", "truth", "try", "trying", "tsunami", "tub", "tube", "tuition",
+        "tumor", "tune", "tuner", "tuning", "tunnel", "turbo", "turkey", "turn", "turned", "turning",
+        "turtle", "twice", "twin", "twist", "twisted", "type", "typical", "ugly", "ultra", "unable",
+        "uncle", "undo", "unified", "uniform", "union", "unique", "unit", "united", "unity", "unknown",
+        "unlike", "unlock", "unusual", "unwrap", "update", "upgrade", "upload", "upper", "upset", "urban",
+        "urge", "urgent", "usage", "use", "used", "useful", "user", "usual", "usually", "utility",
+        "utilize", "vaccine", "vacuum", "valid", "valley", "value", "valued", "valve", "vampire", "van",
+        "vanilla", "varied", "variety", "various", "vary", "vast", "vat", "vault", "vector", "vehicle",
+        "velvet", "vendor", "venture", "venue", "verbal", "verify", "verse", "version", "vertex", "vessel",
+        "veteran", "vice", "victim", "victor", "victory", "video", "view", "viewer", "viking", "villa",
+        "village", "vintage", "vinyl", "violent", "violin", "viral", "virgin", "virtual", "virtue", "virus",
+        "visa", "visible", "vision", "visit", "visitor", "visual", "vital", "vitamin", "vocal", "voice",
+        "void", "volt", "voltage", "volume", "vote", "voting", "wage", "wagon", "wait", "waiting",
+        "waiver", "wake", "walk", "walker", "walking", "wall", "wallet", "walnut", "want", "wanting",
+        "war", "ward", "ware", "warm", "warming", "warning", "warrant", "warren", "warrior", "wash",
+        "washer", "washing", "waste", "watch", "watched", "water", "watt", "wave", "wax", "way",
+        "weak", "wealth", "weapon", "wear", "wearing", "weather", "web", "wed", "wedding", "weed",
+        "week", "weekend", "weekly", "weight", "weird", "welcome", "welding", "welfare", "well", "went",
+        "west", "western", "wet", "whale", "wheat", "wheel", "white", "whole", "wicked", "wide",
+        "widely", "width", "wife", "wild", "will", "willing", "willow", "win", "wind", "window",
+        "wine", "wing", "winner", "winning", "winter", "wire", "wired", "wiring", "wisdom", "wise",
+        "wish", "wishing", "wit", "witch", "witness", "wizard", "wolf", "woman", "won", "wonder",
+        "wood", "wooden", "wool", "word", "work", "worked", "worker", "working", "workout", "world",
+        "worm", "worn", "worried", "worry", "worse", "worship", "worst", "worth", "worthy", "wound",
+        "wow", "wrap", "wrapped", "wrist", "write", "writer", "writing", "written", "wrong", "wrote",
+        "yacht", "yang", "yard", "yarn", "yeah", "year", "yearly", "yeast", "yellow", "yen",
+        "yield", "yoga", "young", "younger", "youth", "zero", "zinc", "zip", "zone", "zoning",
+        "zoo", "zoom"
+      ];
+
+      // ---- Difficulty. The feedback mode is the only thing that changes
+      // between arms; these constants set the shared challenge. ----
+      // WINDOW_WORDS is THE gap dial: the number of legal same-length words
+      // that sit strictly between the two bounds -- the space the player must
+      // bisect. Bisection needs ~log2(W) guesses, so 120 puts the optimal
+      // solve near 7 against a 10-guess budget: a step harder than the old 60
+      // without becoming brutal. Both surviving modes (% and locking) leak
+      // extra information per guess, the other reason to widen the gap.
+      // Generation auto-clamps to the band size and logs if a band is ever too
+      // small to hold this many. Raise toward 180 if playtesting says it's soft.
+      var WINDOW_WORDS  = 120;  // legal guesses (WORDS of the answer's length) between the bounds
+
+      // Locking gets a MUCH wider window, on purpose. Its difficulty is not the
+      // word count but how far the deciding letters spread: a narrow window
+      // lets the two bounds share leading letters (CRANE..CREST), handing the
+      // player the first letters for free and leaving only a tiny tail to
+      // discover. A wide window forces the bounds apart across the alphabet
+      // (about..youth is the 5-letter extreme), so the FIRST letter -- the
+      // highest-value position -- is genuinely unknown. 300 is ~36% of the
+      // 826-word 5-letter band: wide enough that early letters must be earned,
+      // narrow enough that most answers still get a varied, centred window
+      // rather than always snapping to the band ends. % mode ignores spread,
+      // so it keeps the tighter WINDOW_WORDS.
+      var WINDOW_WORDS_LOCKING = 300;
+
+      var MAX_GUESSES   = 10;
+      var ANSWER_LENGTH = 5;
+
+      // The gap dial for a given mode. Locking widens; everything else uses the
+      // shared default.
+      function windowForMode(mode) {
+        return mode === "locking" ? WINDOW_WORDS_LOCKING : WINDOW_WORDS;
+      }
+
+      // ---- Thermometer (mode: 'thermometer' only) ----
+      // How hard the gauge compresses the search space. 0 = linear, where the
+      // last few guesses squash into a sliver and the gauge dies. 1 = fully
+      // logarithmic, where every halving of the space closes the jaws by an
+      // equal step. 1 is the default because bisection is the skill this game
+      // trains, and log makes each successful halving read identically. Lower
+      // it toward 0 if playtesters say early guesses feel unrewarding.
+      // EXPECT TO RETUNE after playtesting, and to re-derive against the
+      // production dictionary, whose rank density differs from this list's.
+      var THERMO_LOG_MIX = 1;
+
+      var MODES = ["control", "percent", "locking"];
+
+      var DEFAULT_MSG = 'Find the word <em>alphabetically</em> in between';
+
+      // ---- Indexes, built once ----
+      var RANK = new Map();            // word -> index in WORDS
+      var BY_LENGTH = new Map();       // length -> sorted array of WORDS of that length
+      var RANK_IN_LENGTH = new Map();  // word -> index within its BY_LENGTH band
+      var ANSWERS_BY_LENGTH = new Map();
+
+      (function buildIndexes() {
+        var i, w;
+        for (i = 0; i < WORDS.length; i++) {
+          w = WORDS[i];
+          RANK.set(w, i);
+          if (!BY_LENGTH.has(w.length)) BY_LENGTH.set(w.length, []);
+          var band = BY_LENGTH.get(w.length);
+          RANK_IN_LENGTH.set(w, band.length);
+          band.push(w);
+        }
+        for (i = 0; i < ANSWERS.length; i++) {
+          w = ANSWERS[i];
+          if (!ANSWERS_BY_LENGTH.has(w.length)) ANSWERS_BY_LENGTH.set(w.length, []);
+          ANSWERS_BY_LENGTH.get(w.length).push(w);
+        }
+      })();
+
+      function rankOf(word) {
+        return RANK.has(word) ? RANK.get(word) : -1;
+      }
+
+      // Smallest i with arr[i] >= key.
+      function firstIndexAtOrAfter(arr, key) {
+        var lo = 0, hi = arr.length;
+        while (lo < hi) {
+          var mid = (lo + hi) >> 1;
+          if (arr[mid] < key) lo = mid + 1;
+          else hi = mid;
+        }
+        return lo;
+      }
+
+      // All WORDS strictly between a and b. Kept for reporting; NOT the
+      // difficulty dial -- wordsBetweenOfLength is.
+      function wordsBetween(a, b) {
+        var ra = rankOf(a), rb = rankOf(b);
+        if (ra < 0 || rb < 0) return 0;
+        return Math.max(0, rb - ra - 1);
+      }
+
+      // The legal-guess count: WORDS of `len` strictly between a and b. This is
+      // the space the player actually searches, so it is the metric that matters.
+      function wordsBetweenOfLength(a, b, len) {
+        var band = BY_LENGTH.get(len) || [];
+        var i = firstIndexAtOrAfter(band, a);
+        if (i < band.length && band[i] === a) i++;
+        return Math.max(0, firstIndexAtOrAfter(band, b) - i);
+      }
+
+      // ---- Logging ----------------------------------------------------------
+      // Shape is what matters here: point this at real analytics later by
+      // swapping the console.log. Seed rides on every event, which is what makes
+      // an arm-vs-arm comparison joinable.
+      function logEvent(name, payload) {
+        var data = {
+          event: name,
+          at: Date.now(),
+          mode: state ? state.mode : null,
+          seed: state ? state.seed : null
+        };
+        if (payload) {
+          for (var k in payload) {
+            if (Object.prototype.hasOwnProperty.call(payload, k)) data[k] = payload[k];
+          }
+        }
+        console.log("[sandwich] " + name, data);
+      }
+
+      // ---- Puzzle generation ------------------------------------------------
+      function mulberry32(a) {
+        return function () {
+          a |= 0; a = a + 0x6D2B79F5 | 0;
+          var t = Math.imul(a ^ a >>> 15, 1 | a);
+          t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+          return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+      }
+
+      function randomSeed() {
+        return Math.floor(Math.random() * 1000000000);
+      }
+
+      // Places the bounds so that exactly `w` WORDS of the answer's length sit
+      // strictly between them. Returns null when the answer is too close to an
+      // end of its band to leave room.
+      function boundsAround(answer, w) {
+        var band = BY_LENGTH.get(answer.length) || [];
+        if (band.length < w + 2) return null;
+        var j = RANK_IN_LENGTH.get(answer);
+        if (j === undefined || j < 1 || j > band.length - 2) return null;
+        var half = Math.floor(w / 2);
+        var lo = j - half - 1;
+        if (lo < 0) lo = 0;
+        if (lo + w + 1 > band.length - 1) lo = band.length - 2 - w;
+        if (j < lo + 1 || j > lo + w) return null;
+        return {
+          answer: answer,
+          lower: band[lo],
+          upper: band[lo + w + 1],
+          window: w
+        };
+      }
+
+      function eligibleAnswers(len, w) {
+        var pool = ANSWERS_BY_LENGTH.get(len) || [];
+        var out = [];
+        for (var i = 0; i < pool.length; i++) {
+          if (boundsAround(pool[i], w)) out.push(pool[i]);
+        }
+        return out;
+      }
+
+      // (seed, length, windowWords) fully determines the puzzle. Mode is NOT an
+      // input, so the same seed yields the identical puzzle in every arm.
+      function generatePuzzle(seed, options) {
+        var o = options || {};
+        var len = o.length || ANSWER_LENGTH;
+        var band = BY_LENGTH.get(len) || [];
+        var asked = o.windowWords || WINDOW_WORDS;
+        var w = Math.min(asked, band.length - 2);
+        if (w < asked) {
+          logEvent("window_clamped", { length: len, asked: asked, used: w });
+        }
+        var pool = eligibleAnswers(len, w);
+        if (!pool.length) {
+          logEvent("no_eligible_answers", { length: len, windowWords: w });
+          return null;
+        }
+        var rnd = mulberry32(seed);
+        return boundsAround(pool[Math.floor(rnd() * pool.length)], w);
+      }
+
+      var QUERY = (function readQuery() {
+        var q = {}, p;
+        try {
+          p = new URLSearchParams(window.location.search);
+        } catch (e) {
+          return q;
+        }
+        function num(name) {
+          var v = parseInt(p.get(name), 10);
+          return isNaN(v) ? null : v;
+        }
+        function word(name) {
+          var v = p.get(name);
+          return v ? v.toLowerCase().replace(/[^a-z]/g, "") : null;
+        }
+        q.seed = num("seed");
+        q.length = num("length");
+        q.windowWords = num("window");
+        q.answer = word("answer");
+        q.lower = word("lower");
+        q.upper = word("upper");
+        var mode = p.get("mode");
+        q.mode = mode && MODES.indexOf(mode) >= 0 ? mode : null;
+        return q;
+      })();
+
+      // Honours ?answer= / ?lower= / ?upper= for testing, falling back to a
+      // seeded puzzle (with a log) rather than failing silently. The mode sets
+      // the default gap width (locking is wider) unless ?window= overrides it.
+      function buildPuzzle(seed, mode) {
+        var defaultWindow = windowForMode(mode);
+        var opts = {
+          length: QUERY.length,
+          windowWords: QUERY.windowWords || defaultWindow
+        };
+        if (QUERY.answer) {
+          if (!RANK.has(QUERY.answer)) {
+            logEvent("forced_answer_unknown", { answer: QUERY.answer });
+          } else {
+            var w = QUERY.windowWords || defaultWindow;
+            var forced = boundsAround(QUERY.answer, w);
+            if (forced) {
+              if (QUERY.lower && RANK.has(QUERY.lower)) forced.lower = QUERY.lower;
+              if (QUERY.upper && RANK.has(QUERY.upper)) forced.upper = QUERY.upper;
+              if (forced.lower < forced.answer && forced.answer < forced.upper) {
+                return forced;
+              }
+              logEvent("forced_bounds_invalid", forced);
+            } else {
+              logEvent("forced_answer_unplaceable", { answer: QUERY.answer });
+            }
+          }
+        }
+        return generatePuzzle(seed, opts);
+      }
+
+      // ---- State ------------------------------------------------------------
+      var state;
+      var currentSeed;
+
+      function initialState(opts) {
+        var o = opts || {};
+        var puzzle = o.puzzle;
+        return {
+          mode: o.mode || "control",
+          seed: o.seed,
+          answer: puzzle.answer,
+
+          // The opening window, and the DENOMINATOR the thermometer gauge
+          // measures against -- see gaugeParts().
+          //
+          // This reverses earlier guidance, so the reasoning is worth keeping:
+          // a gauge showing the answer's POSITION must normalise against the
+          // live window, because keyed to the original window it goes dead once
+          // the bounds tighten. But the gauge shows how much SPACE IS LEFT, and
+          // for that the opening window is the only meaningful baseline. What
+          // stops it dying is the log scaling in THERMO_LOG_MIX: linear would
+          // run 100 -> 50 -> 23 -> 12 -> 5 -> 2, squashing the endgame into a
+          // sliver, where log runs 100 -> 84 -> 66 -> 51 -> 34 -> 17.
+          startLower: puzzle.lower,
+          startUpper: puzzle.upper,
+
+          lower: puzzle.lower,
+          upper: puzzle.upper,
+          prevLower: null,
+          prevUpper: null,
+          typed: "",
+          guesses: [],
+          guessesLeft: MAX_GUESSES,
+          solved: false,
+          gameOver: false,
+          thinking: false,
+          shake: false,
+          boundSide: null, // 'top' | 'bottom' just moved
+          message: DEFAULT_MSG,
+          notice: null,
+
+          // Locking mode: the longest run of leading letters the player has
+          // proven correct (a prefix the guess shares with the answer is, by
+          // definition, correct). Accumulates across guesses; never shrinks.
+          locked: ""
+        };
+      }
+
+      // ---- Keyboard availability --------------------------------------------
+      // Availability is ALPHABETICAL ONLY, and deliberately so. The keyboard
+      // must never consult the word list: a dictionary-aware keyboard leaks the
+      // answer list, because a player could walk the alphabet and read off
+      // which letters have real words behind them -- information they are
+      // supposed to be deducing. The keyboard only ever confirms what the
+      // bounds already imply.
+      //
+      // So the keyboard and guessProblem() DO disagree, on the dictionary, and
+      // that is correct: BZZZZ is typeable between two bounds and is rejected
+      // at Enter with "isn't in the word list". The keyboard is stricter than
+      // alphabetical viability on length alone (see keyState), because typing
+      // past the answer's length carries no information and can only produce a
+      // pointless rejection.
+
+      // Sentinel greater than any lowercase letter run ("{" is 0x7B, just past
+      // "z" at 0x7A), so prefix + HI stands for the largest word starting with
+      // prefix. NOTE: it is a fixed 12 characters, so a prefix whose bound
+      // differs from it only beyond prefix.length + 12 would be misjudged.
+      // Unreachable with 3-7 letter words; it would matter if the list ever
+      // carried longer ones.
+      var HI = "{{{{{{{{{{{{";
+
+      // A prefix is viable if some completion lands between the bounds --
+      // whether or not any real word does.
+      //
+      // Both comparisons are deliberately INCLUSIVE of the bound words, and
+      // symmetrically so: "hi > lower" admits a prefix equal to the lower
+      // bound, and "prefix <= upper" admits one equal to the upper bound. Do
+      // not tighten either to exclude them. Dimming a bound word would mean
+      // the keyboard excluding a key because of one specific word rather than
+      // the range -- the dictionary leak in miniature -- and it would read as
+      // a bug, with UNCL fine and its E dead. Typing a bound costs one wasted
+      // guess at most, and guessProblem() explains it clearly.
+      function viable(prefix) {
+        if (!prefix) return true;
+        var hi = prefix + HI;
+        return hi > state.lower && prefix <= state.upper;
+      }
+
+      function keyState(letter) {
+        if (state.gameOver || state.thinking) return "dim";
+        // The length cap: the only way the keyboard is stricter than the old
+        // sentinel check.
+        if (state.typed.length >= state.answer.length) return "dim";
+        if (!viable(state.typed + letter)) return "dim";
+        // Locking mode adds one more, TIGHTER constraint at the first unlocked
+        // position: letters a guess already ruled out there are dimmed. If the
+        // answer's letter were that one, the lock would have extended to cover
+        // it -- so a guessed letter that did NOT lock is provably wrong, and
+        // the direction (which bound the guess became) rules out everything
+        // past it too. Only applies once the player has typed exactly the
+        // locked prefix, i.e. is choosing that very position.
+        if (state.mode === "locking" && state.typed === state.locked) {
+          var e = lockPositionRange();
+          if (e.below !== null && letter <= e.below) return "dim";
+          if (e.above !== null && letter >= e.above) return "dim";
+        }
+        return "enabled";
+      }
+
+      // Returns the reason a guess is rejected, or null when it is legal.
+      // All but the first branch are reachable, because the keyboard checks
+      // alphabetical possibility only:
+      //   empty        - no: Enter is dim with nothing typed
+      //   wrong length - yes, on a partial word (the cap prevents over-long)
+      //   out of bounds- yes, by typing the lower bound exactly. viable() lets
+      //                  it through (prefix + HI > lower even when prefix
+      //                  equals lower) while the upper bound is strict. Do
+      //                  not tighten either to exclude them. Dimming a bound word
+      //                  would mean the keyboard excluding a key because of one
+      //                  specific word rather than the range -- the dictionary
+      //                  leak in miniature -- and it would read as a bug.
+      function guessProblem() {
+        var t = state.typed;
+        if (!t) return "Type a word to guess.";
+        if (t.length !== state.answer.length) {
+          return "The answer has " + state.answer.length + " letters.";
+        }
+        if (!(state.lower < t && t < state.upper)) {
+          return "Must come between " + state.lower.toUpperCase() +
+            " and " + state.upper.toUpperCase() + ".";
+        }
+        return null;
+      }
+
+      function guessValid() {
+        return guessProblem() === null;
+      }
+
+      // Live whenever something is typed, so submit() can explain the one
+      // reachable rejection. Dimming it would make that message unreachable,
+      // since .key.dim sets pointer-events: none.
+      function enterState() {
+        if (state.gameOver || state.thinking) return "dim";
+        return state.typed ? "enabled" : "dim";
+      }
+
+      // ---- Actions ----
+      function typeLetter(l) {
+        if (state.gameOver || state.thinking) return;
+        if (keyState(l) !== "enabled") return;
+        state.typed += l;
+        state.notice = null;
+        render();
+      }
+
+      function backspace() {
+        if (state.gameOver || state.thinking || !state.typed) return;
+        state.typed = state.typed.slice(0, -1);
+        state.notice = null;
+        render();
+      }
+
+      function submit() {
+        if (state.gameOver || state.thinking) return;
+        var problem = guessProblem();
+        if (problem) {
+          state.notice = problem;
+          state.shake = true;
+          render();
+          return;
+        }
+        state.notice = null;
+        state.thinking = true;
+        render();
+        setTimeout(resolveGuess, 750);
+      }
+
+      function resolveGuess() {
+        state.thinking = false;
+        var w = state.typed;
+
+        // Locking mode bookkeeping: extend the proven prefix. Runs for every
+        // guess, win or miss, so the tiles are up to date the moment the board
+        // settles. Harmless in the other modes -- renderLocks gates on mode.
+        updateLocks(w);
+
+        // Win first: a correct guess must not consume a guess.
+        if (w === state.answer) {
+          state.guesses.push({ word: w, direction: "correct" });
+          state.solved = true;
+          state.gameOver = true;
+          state.typed = w;
+          state.message = "You found the secret word!";
+          logEvent("win", {
+            answer: state.answer,
+            guessesUsed: state.guesses.length,
+            guessesRemaining: state.guessesLeft
+          });
+          render();
+          showPrompt("Nice one — you found <strong>" +
+            w.toUpperCase() + "</strong>!");
+          return;
+        }
+
+        state.guessesLeft = Math.max(0, state.guessesLeft - 1);
+
+        // direction: which bound this guess became -- "lower" means the answer
+        // is after it, "upper" means before it. "correct" for the winner.
+        var direction = w < state.answer ? "lower" : "upper";
+        state.guesses.push({ word: w, direction: direction });
+
+        if (direction === "lower") {
+          state.prevLower = state.lower;
+          state.lower = w;
+          state.boundSide = "top";
+        } else {
+          state.prevUpper = state.upper;
+          state.upper = w;
+          state.boundSide = "bottom";
+        }
+
+        // Fired after the bound swap, so the gauge fields match what the player
+        // is shown. Logged in ALL arms, not just thermometer: it costs nothing,
+        // stays invisible, and makes "what would a control player have seen
+        // here" answerable. gaugeGap is the series to judge the arm on -- how
+        // fast a player closes the space.
+        var gauge = gaugeParts();
+        logEvent("guess", {
+          word: w,
+          direction: direction,
+          rankDistance: Math.abs(rankOf(w) - rankOf(state.answer)),
+          legalGuessesLeftInWindow:
+            wordsBetweenOfLength(state.lower, state.upper, state.answer.length),
+          openingWindow: gauge.opening,
+          gaugeGap: Math.round(gauge.gap * 1000) / 1000,
+          gaugeClosedBelow: gauge.below,
+          gaugeClosedAbove: gauge.above,
+          guessesRemaining: state.guessesLeft,
+          lower: state.lower,
+          upper: state.upper
+        });
+
+        state.message =
+          "Now find the word between " +
+          state.lower.toUpperCase() +
+          " and " +
+          state.upper.toUpperCase();
+        state.typed = "";
+
+        if (state.guessesLeft <= 0) {
+          state.gameOver = true;
+          state.message =
+            "Out of guesses — the word was " + state.answer.toUpperCase() + ".";
+          logEvent("loss", {
+            answer: state.answer,
+            guessesUsed: state.guesses.length
+          });
+          render();
+          showPrompt("The word was <strong>" + state.answer.toUpperCase() +
+            "</strong>. Try again?");
+          return;
+        }
+
+        render();
+      }
+
+      // ---- Thermometer ----------------------------------------------------
+      // The gauge shows HOW MUCH OF THE SEARCH SPACE IS STILL IN PLAY -- not
+      // where the answer sits. An earlier version showed the answer's position
+      // between the bounds and was unreadable, for two measured reasons:
+      //
+      //   * It is computed in RANK, while the only reference a player has is
+      //     how the two bound words LOOK. Those disagree by a median of 0.15 of
+      //     the tube, and by more than 0.10 in 64% of puzzles: TODAY..WAGES
+      //     with answer TURBO read 51% while the words look like 10%. In the
+      //     player's only frame of reference the gauge was misreporting.
+      //   * Its trajectory was noise. Under flawless bisection it read
+      //     69 -> 38 -> 85 -> 67 -> 0 -> 50, while the quantity actually
+      //     improving -- 60 -> 30 -> 14 -> 7 -> 3 -> 1 candidates -- was never
+      //     shown. Crawling one word at a time looked almost identical.
+      //
+      // Remaining space fixes all of that: it only ever shrinks, it needs no
+      // rank intuition because it claims no position, and it separates a good
+      // guess from a wasted one. It leaks nothing either -- every number here
+      // is already determined by the two bound words on screen. It just makes
+      // legible that MILK..STAR holds hundreds of candidates and WIRED..WORLD
+      // holds three.
+      //
+      // Measured with wordsBetweenOfLength throughout, so the gauge, the
+      // windowWords difficulty dial and the log all speak in legal guesses.
+      function gaugeParts() {
+        var len = state.answer.length;
+        var opening   = wordsBetweenOfLength(state.startLower, state.startUpper, len);
+        var remaining = wordsBetweenOfLength(state.lower, state.upper, len);
+        if (opening <= 1) {
+          return { gap: 1, top: 0, bottom: 0,
+                   opening: opening, remaining: remaining, below: 0, above: 0 };
+        }
+
+        // The gap never reaches zero: remaining is always >= 1 because the
+        // answer is itself a candidate, so the floor is log(2)/log(opening+1),
+        // about 0.17 -- a visible sliver meaning "one word left". No clamp.
+        var linear = remaining / opening;
+        var logged = Math.log(remaining + 1) / Math.log(opening + 1);
+        var gap = (1 - THERMO_LOG_MIX) * linear + THERMO_LOG_MIX * logged;
+
+        // Candidates each bound has eaten: those beyond it, plus the bound word
+        // itself once it has moved off the opening bound. Splitting the closed
+        // space this way makes an asymmetric squeeze visible, so the player can
+        // see WHICH of their guesses did the work.
+        var below = wordsBetweenOfLength(state.startLower, state.lower, len) +
+          (state.lower !== state.startLower ? 1 : 0);
+        var above = wordsBetweenOfLength(state.upper, state.startUpper, len) +
+          (state.upper !== state.startUpper ? 1 : 0);
+
+        var closed = 1 - gap;
+        var share = (below + above) === 0 ? 0.5 : below / (below + above);
+        return { gap: gap, top: closed * share, bottom: closed * (1 - share),
+                 opening: opening, remaining: remaining, below: below, above: above };
+      }
+
+      // ---- Rendering ----
+      var subtitleEl = document.getElementById("subtitle");
+      var boundTopEl = document.getElementById("boundTop");
+      var boundBottomEl = document.getElementById("boundBottom");
+      var boundTopFarEl = document.getElementById("boundTopFar");
+      var boundBottomFarEl = document.getElementById("boundBottomFar");
+      var inputCardEl = document.getElementById("inputCard");
+      var guessesLeftEl = document.getElementById("guessesLeft");
+      var noticeEl = document.getElementById("notice");
+      var keyboardEl = document.getElementById("keyboard");
+      var thermoEl = document.getElementById("thermo");
+      var thermoSpacerEl = document.getElementById("thermoSpacer");
+      var thermoJawTopEl = document.getElementById("thermoJawTop");
+      var thermoJawBottomEl = document.getElementById("thermoJawBottom");
+
+      var ROWS = [
+        "qwertyuiop".split(""),
+        "asdfghjkl".split(""),
+        ["enter"].concat("zxcvbnm".split("")).concat(["back"])
+      ];
+
+      var BACK_SVG =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"></path><path d="m12 9 6 6"></path><path d="m18 9-6 6"></path></svg>';
+
+      function buildKeyboard() {
+        keyboardEl.innerHTML = "";
+        ROWS.forEach(function (row) {
+          var rowEl = document.createElement("div");
+          rowEl.className = "krow";
+          row.forEach(function (k) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            if (k === "enter") {
+              btn.className = "key wide";
+              btn.textContent = "Enter";
+              btn.dataset.action = "enter";
+            } else if (k === "back") {
+              btn.className = "key wide";
+              btn.innerHTML = BACK_SVG;
+              btn.dataset.action = "back";
+            } else {
+              btn.className = "key";
+              btn.textContent = k.toUpperCase();
+              btn.dataset.letter = k;
+            }
+            rowEl.appendChild(btn);
+          });
+          keyboardEl.appendChild(rowEl);
+        });
+
+        keyboardEl.addEventListener("click", function (e) {
+          var btn = e.target.closest("button");
+          if (!btn) return;
+          if (btn.dataset.action === "enter") submit();
+          else if (btn.dataset.action === "back") backspace();
+          else if (btn.dataset.letter) typeLetter(btn.dataset.letter);
+        });
+      }
+
+      function dashes(n) {
+        var parts = [];
+        for (var i = 0; i < n; i++) parts.push("&ndash;");
+        return parts.join("&nbsp;");
+      }
+
+      // ---- Closeness readout ----------------------------------------------
+      // How near a guess landed to the answer, measured on the same
+      // alphabetical number-line the whole game runs on -- nothing here
+      // consults the hidden word list, so it stays player-verifiable. 100%
+      // means the guess sits on the answer; 0% means a full opening-window away.
+      function alphaValueLen(w, len) {
+        var v = 0;
+        for (var i = 0; i < len; i++) {
+          var c = i < w.length ? w.charCodeAt(i) - 97 : 0;
+          if (c < 0) c = 0;
+          if (c > 25) c = 25;
+          v = v * 26 + c;
+        }
+        return v;
+      }
+
+      function closenessPct(word) {
+        var len = state.answer.length;
+        var span = Math.abs(
+          alphaValueLen(state.startUpper, len) - alphaValueLen(state.startLower, len)
+        );
+        if (span < 1) span = 1;
+        var d = Math.abs(alphaValueLen(word, len) - alphaValueLen(state.answer, len));
+        var c = 1 - d / span;
+        if (c < 0) c = 0;
+        if (c >= 1) return "100"; // exact answer only
+
+        // One decimal, and never allow a non-exact guess to round up to 100:
+        // floor to the tenth so 99.97% reads 99.9%, keeping 100% meaningful.
+        var pct = Math.floor(c * 1000) / 10;
+        if (pct >= 100) pct = 99.9;
+        return pct.toFixed(1);
+      }
+
+      // Only the player's own guesses carry a readout. The opening bounds are
+      // given, not guessed, and are explicitly not clues -- annotating them
+      // would mislead.
+      function wasGuessed(word) {
+        for (var i = 0; i < state.guesses.length; i++) {
+          if (state.guesses[i].word === word) return true;
+        }
+        return false;
+      }
+
+      // ---- Locking mode ---------------------------------------------------
+      // A guess shares a leading run of letters with the answer; that run is,
+      // by definition, correct, so it can be shown locked. We keep the longest
+      // such run seen across all guesses -- knowledge only grows.
+      function commonPrefixLen(a, b) {
+        var n = Math.min(a.length, b.length), i = 0;
+        while (i < n && a.charAt(i) === b.charAt(i)) i++;
+        return i;
+      }
+
+      function updateLocks(word) {
+        var k = commonPrefixLen(word, state.answer);
+        if (k > state.locked.length) {
+          state.locked = state.answer.slice(0, k);
+        }
+      }
+
+      // The proven letter range at the first unlocked position, read only from
+      // the player's own guesses that share the locked prefix. Such a guess
+      // differs from the answer first at this position, so its letter here is
+      // a hard edge: a lower-bound guess proves the answer's letter is AFTER
+      // it, an upper-bound guess proves it is BEFORE. Returns the nearest edge
+      // on each side (or null). No word list is consulted.
+      function lockPositionRange() {
+        var k = state.locked.length;
+        var below = null, above = null;
+        if (k >= state.answer.length) return { below: below, above: above };
+        var target = state.answer.charAt(k);
+        for (var i = 0; i < state.guesses.length; i++) {
+          var w = state.guesses[i].word;
+          if (w.length <= k || w.slice(0, k) !== state.locked) continue;
+          var ch = w.charAt(k);
+          if (ch < target) { if (below === null || ch > below) below = ch; }
+          else if (ch > target) { if (above === null || ch < above) above = ch; }
+        }
+        return { below: below, above: above };
+      }
+
+      // side: 'lower' (a guess before the answer -> answer is below -> down
+      // arrow) or 'upper' (a guess after the answer -> answer is above -> up).
+      function boundHTML(word, side) {
+        var html = word.toUpperCase();
+        if (state.mode === "percent" && wasGuessed(word)) {
+          var arrow = side === "lower" ? "\u2193" : "\u2191";
+          html += '<span class="bound-meta">' + arrow + " " +
+            closenessPct(word) + "%</span>";
+        }
+        return html;
+      }
+
+      function renderInput() {
+        inputCardEl.classList.toggle("solved", state.solved);
+        if (state.thinking) {
+          inputCardEl.innerHTML = '<span class="thinking-dots"></span>';
+        } else if (state.typed) {
+          inputCardEl.innerHTML =
+            state.typed.toUpperCase() +
+            (state.gameOver ? "" : '<span class="caret"></span>');
+        } else if (state.mode === "locking" && state.locked) {
+          // Keep the proven letters in their slots; the rest stay as dashes.
+          var len = state.answer.length;
+          var parts = [];
+          for (var i = 0; i < len; i++) {
+            if (i < state.locked.length) {
+              parts.push('<span class="slot-lock">' +
+                state.locked.charAt(i).toUpperCase() + "</span>");
+            } else {
+              parts.push('<span class="slot-empty">&ndash;</span>');
+            }
+          }
+          inputCardEl.innerHTML = parts.join("&nbsp;");
+        } else {
+          inputCardEl.innerHTML =
+            '<span class="slot-empty">' + dashes(state.answer.length) + "</span>";
+        }
+        if (state.shake) {
+          inputCardEl.classList.remove("shake");
+          void inputCardEl.offsetWidth;
+          inputCardEl.classList.add("shake");
+          state.shake = false;
+        }
+      }
+
+      function renderBounds() {
+        boundTopEl.innerHTML = boundHTML(state.lower, "lower");
+        boundBottomEl.innerHTML = boundHTML(state.upper, "upper");
+
+        if (state.prevLower) {
+          boundTopFarEl.innerHTML = boundHTML(state.prevLower, "lower");
+          boundTopFarEl.classList.remove("empty");
+        } else {
+          boundTopFarEl.textContent = "";
+          boundTopFarEl.classList.add("empty");
+        }
+        if (state.prevUpper) {
+          boundBottomFarEl.innerHTML = boundHTML(state.prevUpper, "upper");
+          boundBottomFarEl.classList.remove("empty");
+        } else {
+          boundBottomFarEl.textContent = "";
+          boundBottomFarEl.classList.add("empty");
+        }
+
+        if (state.boundSide === "top") {
+          boundTopEl.classList.remove("move-top");
+          void boundTopEl.offsetWidth;
+          boundTopEl.classList.add("move-top");
+        } else if (state.boundSide === "bottom") {
+          boundBottomEl.classList.remove("move-bottom");
+          void boundBottomEl.offsetWidth;
+          boundBottomEl.classList.add("move-bottom");
+        }
+        state.boundSide = null;
+      }
+
+      var lastMessage = null;
+      function renderStep() {
+        if (state.message === lastMessage) return;
+        lastMessage = state.message;
+        subtitleEl.innerHTML = state.message;
+        subtitleEl.classList.remove("step-in");
+        void subtitleEl.offsetWidth;
+        subtitleEl.classList.add("step-in");
+      }
+
+      function renderNotice() {
+        noticeEl.textContent = state.notice || "";
+        noticeEl.classList.toggle("show", !!state.notice);
+      }
+
+      // Invisible in the other two arms: nothing is written to the DOM beyond
+      // setting hidden, so control and locking lay out exactly as before.
+      // The reading depends only on the four bound words and the answer, so the
+      // heights are stable across keystrokes and the CSS transitions fire only
+      // when a guess actually moves a bound.
+      function renderThermo() {
+        var on = state.mode === "thermometer";
+        thermoEl.hidden = !on;
+        thermoSpacerEl.hidden = !on;
+        if (!on) return;
+        var g = gaugeParts();
+        thermoJawTopEl.style.height = (g.top * 100).toFixed(2) + "%";
+        thermoJawBottomEl.style.height = (g.bottom * 100).toFixed(2) + "%";
+      }
+
+      function renderKeyboard() {
+        var buttons = keyboardEl.querySelectorAll("button");
+        buttons.forEach(function (btn) {
+          btn.classList.remove("dim");
+          var s;
+          if (btn.dataset.action === "enter") s = enterState();
+          else if (btn.dataset.action === "back")
+            s = state.gameOver || state.thinking || !state.typed ? "dim" : "enabled";
+          else s = keyState(btn.dataset.letter);
+          if (s === "dim") btn.classList.add("dim");
+        });
+      }
+
+      function render() {
+        renderStep();
+        renderBounds();
+        renderThermo();
+        renderInput();
+        renderNotice();
+        renderKeyboard();
+        guessesLeftEl.textContent = state.guessesLeft;
+      }
+
+      // ---- Overlays ----
+      var promptOverlay = document.getElementById("promptOverlay");
+      var promptText = document.getElementById("promptText");
+      var promptSeed = document.getElementById("promptSeed");
+      var startOverlay = document.getElementById("startOverlay");
+      var startSeed = document.getElementById("startSeed");
+      var startVisible = true;
+
+      function seedLabel(seed) {
+        return "Puzzle seed " + seed;
+      }
+
+      function showPrompt(html) {
+        promptText.innerHTML = html;
+        promptSeed.textContent = seedLabel(state.seed);
+        promptOverlay.hidden = false;
+      }
+
+      function hidePrompt() {
+        promptOverlay.hidden = true;
+      }
+
+      function showStart() {
+        hidePrompt();
+        startSeed.textContent = seedLabel(currentSeed);
+        startOverlay.hidden = false;
+        startVisible = true;
+      }
+
+      function hideStart() {
+        startOverlay.hidden = true;
+        startVisible = false;
+      }
+
+      function newGame(mode, seed) {
+        hidePrompt();
+        hideStart();
+        currentSeed = seed;
+        var puzzle = buildPuzzle(seed, mode);
+        if (!puzzle) {
+          // Only reachable if the lists or the constants are inconsistent.
+          state = null;
+          console.error("[sandwich] could not build a puzzle", { seed: seed });
+          return;
+        }
+        state = initialState({ mode: mode, seed: seed, puzzle: puzzle });
+        lastMessage = null;
+        logEvent("puzzle", {
+          answerLength: state.answer.length,
+          windowWords: puzzle.window,
+          allWordsInWindow: wordsBetween(puzzle.lower, puzzle.upper),
+          lower: puzzle.lower,
+          upper: puzzle.upper
+        });
+        render();
+      }
+
+      startOverlay.addEventListener("click", function (e) {
+        var btn = e.target.closest("button[data-mode]");
+        if (!btn) return;
+        // Advance the seed so choosing a mode always starts a fresh puzzle,
+        // rather than replaying the same answer in a different mode.
+        newGame(btn.dataset.mode, currentSeed + 1);
+        logEvent("mode_chosen", {
+          answerLength: state.answer.length,
+          windowWords: WINDOW_WORDS,
+          allWordsInWindow: wordsBetween(state.startLower, state.startUpper)
+        });
+      });
+
+      // "Play again" advances the seed; "Change mode" keeps it, so the same
+      // puzzle can be replayed in another arm. Both wrapped, because newGame
+      // takes arguments and would otherwise receive the MouseEvent.
+      document.getElementById("promptAgain").addEventListener("click", function () {
+        newGame(state.mode, currentSeed + 1);
+      });
+      document.getElementById("promptModes").addEventListener("click", function () {
+        showStart();
+      });
+
+      // Physical keyboard support
+      document.addEventListener("keydown", function (e) {
+        if (startVisible || !state || state.gameOver) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submit();
+        } else if (e.key === "Backspace") {
+          e.preventDefault();
+          backspace();
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+          typeLetter(e.key.toLowerCase());
+        }
+      });
+
+      // ---- Boot ----
+      (function boot() {
+        // Integrity: every ANSWERS entry must be a legal word.
+        var orphans = [];
+        for (var i = 0; i < ANSWERS.length; i++) {
+          if (!RANK.has(ANSWERS[i])) orphans.push(ANSWERS[i]);
+        }
+        if (orphans.length) {
+          console.error("[sandwich] ANSWERS entries missing from WORDS",
+            orphans.slice(0, 20));
+        }
+
+        currentSeed = QUERY.seed === null ? randomSeed() : QUERY.seed;
+        buildKeyboard();
+
+        // Render the board behind the start screen so it isn't blank.
+        var mode = QUERY.mode || "percent";
+        newGame(mode, currentSeed);
+
+        if (QUERY.mode) {
+          logEvent("mode_chosen", {
+            answerLength: state.answer.length,
+            windowWords: WINDOW_WORDS,
+            allWordsInWindow: wordsBetween(state.startLower, state.startUpper),
+            via: "query"
+          });
+        } else {
+          showStart();
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

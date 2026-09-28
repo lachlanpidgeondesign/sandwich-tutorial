@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sandwich — Closeness Visual Previews</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --card: #ffffff;
+    --ink: #1c1a17;
+    --muted: #6c665c;
+    --edge: #e2ddd2;
+    --accent: #e8b800;
+    --cold: #3b6ea5;
+    --hot: #d64545;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 20px; font-size: 14px; line-height: 1.5; }
+
+  /* Control panel */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+  .bounds {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .bounds .b { color: var(--muted); }
+  .hint { text-align: center; color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .inrow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  input[type=text] {
+    font-size: 18px;
+    padding: 10px 14px;
+    border: 2px solid var(--edge);
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    width: 220px;
+    text-align: center;
+    outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  button {
+    font-size: 16px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--edge); }
+  .err { text-align: center; color: var(--hot); font-size: 13px; height: 18px; margin-top: 8px; }
+
+  /* Grid of the 4 options */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .opt {
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 16px;
+    min-height: 220px;
+  }
+  .opt h2 { font-size: 15px; margin: 0 0 2px; }
+  .opt .desc { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; line-height: 1.45; }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; }
+
+  /* ---- Option A: proximity bars ---- */
+  .barRow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .barRow .w { width: 74px; font-weight: 600; font-size: 13px; letter-spacing: 1px; }
+  .barTrack { flex: 1; height: 16px; background: #eee7d8; border-radius: 8px; overflow: hidden; }
+  .barFill { height: 100%; border-radius: 8px; transition: width .5s ease; }
+
+  /* ---- Option B: closing jaws ---- */
+  .jaws {
+    position: relative;
+    height: 150px;
+    border-radius: 10px;
+    background: linear-gradient(180deg,#eef2f6,#f7f4ec);
+    overflow: hidden;
+    border: 1px solid var(--edge);
+  }
+  .jaw {
+    position: absolute; left: 0; right: 0;
+    background: repeating-linear-gradient(45deg,#c9c1b0,#c9c1b0 6px,#d7d0c0 6px,#d7d0c0 12px);
+    transition: height .55s cubic-bezier(.4,1.3,.5,1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #5a5346; letter-spacing: 1px;
+  }
+  .jawTop { top: 0; }
+  .jawBottom { bottom: 0; }
+  .jawMid {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    text-align: center; font-size: 12px; color: var(--muted);
+  }
+
+  /* ---- Option C: dots on a track ---- */
+  .track {
+    position: relative;
+    height: 170px;
+    width: 100%;
+    background: linear-gradient(90deg, transparent 49%, var(--edge) 49%, var(--edge) 51%, transparent 51%);
+    margin-top: 4px;
+  }
+  .trackLabel { position: absolute; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 1px; }
+  .trackLabel.top { top: -2px; }
+  .trackLabel.bot { bottom: -2px; }
+  .dot {
+    position: absolute; left: 50%; transform: translate(-50%,-50%);
+    display: flex; align-items: center; gap: 8px;
+    transition: top .5s ease;
+  }
+  .dot .bead { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 rgba(0,0,0,0); }
+  .dot .tag { font-size: 12px; font-weight: 600; letter-spacing: 1px; white-space: nowrap; }
+  .dot .tag.right { order: -1; }
+
+  /* ---- Option D: heat chips ---- */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    padding: 8px 12px; border-radius: 999px; font-weight: 700; letter-spacing: 1px;
+    font-size: 14px; color: #fff;
+  }
+
+  .legend { font-size: 11px; color: var(--muted); margin-top: 12px; }
+  .footer { text-align:center; color: var(--muted); font-size: 12px; margin-top: 28px; }
+  code { background:#eee7d8; padding:1px 5px; border-radius:4px; font-size:12px; }
+
+  /* ---- Featured: merged sandwich stack ---- */
+  .featured { border: 2px solid var(--accent); margin-bottom: 24px; }
+  .featured h2 { color: #8a6d00; }
+  .stack {
+    display: flex; flex-direction: column; align-items: stretch;
+    gap: 6px; padding: 8px 0;
+  }
+  .stackAbove, .stackBelow { display: flex; flex-direction: column; gap: 6px; }
+  .stackRow {
+    display: flex; align-items: center; justify-content: center;
+    transition: margin .5s ease;
+  }
+  .stackWord {
+    font-weight: 700; letter-spacing: 2px; font-size: 16px; color: var(--ink);
+    padding: 8px 16px; border-radius: 10px; min-width: 150px; text-align: center;
+    background: #f0ebe0; border: 1px solid var(--edge);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .stackWord .meta { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+  .stackWord .arrow { font-size: 13px; }
+  .stackWord .pct { font-size: 12px; font-weight: 700; letter-spacing: 0; }
+  .answerRow {
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; letter-spacing: 8px; font-size: 20px; color: var(--ink);
+    padding: 12px 16px; border: 2px dashed var(--accent); border-radius: 10px;
+    background: #fffdf5; min-width: 150px; margin: 4px auto;
+  }
+  .stackEmpty { text-align: center; color: var(--muted); font-style: italic; font-size: 13px; padding: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sandwich — four ways to show “how close was that guess”</h1>
+  <p class="lede">
+    Same puzzle, same guess, four different visual encodings — all measuring the
+    <strong>alphabetical distance</strong> between your guess and the hidden answer (no hidden word list involved).
+    Type any 5-letter word between the bounds and hit <strong>Guess</strong> to see each option react.
+    The answer here is hidden — try to feel which visual actually helps you home in.
+  </p>
+
+  <div class="panel">
+    <div class="bounds">
+      <span id="lowerB">ABOUT</span>
+      <span class="b">&lt; ? &lt;</span>
+      <span id="upperB">WORLD</span>
+    </div>
+    <p class="hint">Guess a 5-letter word that falls alphabetically between the two bounds.</p>
+    <div class="inrow">
+      <input id="guessInput" type="text" maxlength="5" placeholder="GUESS" autocomplete="off" />
+      <button id="guessBtn">Guess</button>
+      <button id="resetBtn" class="ghost">Reset</button>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="opt featured">
+    <h2>★ Merged · your sandwich stack, with closeness baked in</h2>
+    <p class="desc">
+      Keeps the exact structure you have now — lower-bound guesses above the answer, upper-bound guesses below —
+      with the closeness <strong>%</strong> and a direction <strong>arrow</strong> to the right of each word, and each guess sitting
+      <strong>vertically nearer the centre</strong> the closer it is. Direction from which side it's on; distance from the %. No decimal, no hidden word list.
+    </p>
+    <div class="stack" id="optE">
+      <div class="stackAbove" id="stackAbove"></div>
+      <div class="answerRow" id="answerRow">? ? ? ? ?</div>
+      <div class="stackBelow" id="stackBelow"></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- A -->
+    <div class="opt">
+      <h2>A · Proximity bars</h2>
+      <p class="desc">One bar per guess. Longer + hotter = closer. You read your history as bars racing toward full.</p>
+      <div id="optA"><span class="empty">Your guesses will appear here.</span></div>
+    </div>
+
+    <!-- B -->
+    <div class="opt">
+      <h2>B · Closing jaws</h2>
+      <p class="desc">Latest guess only. The nearer jaw snaps inward by how close you were — a near-miss almost shuts it.</p>
+      <div class="jaws" id="optB">
+        <div class="jaw jawTop" id="jawTop" style="height:8%"></div>
+        <div class="jaw jawBottom" id="jawBottom" style="height:8%"></div>
+        <div class="jawMid" id="jawMid">No guess yet</div>
+      </div>
+    </div>
+
+    <!-- C -->
+    <div class="opt">
+      <h2>C · Dots on a track</h2>
+      <p class="desc">Each guess drops a dot at its alphabetical spot between the bounds. Hotter dots are closer to the hidden answer line.</p>
+      <div class="track" id="optC">
+        <span class="trackLabel top" id="trackTop">ABOUT</span>
+        <span class="trackLabel bot" id="trackBot">WORLD</span>
+      </div>
+    </div>
+
+    <!-- D -->
+    <div class="opt">
+      <h2>D · Heat chips</h2>
+      <p class="desc">Just the word, tinted on a cold→hot scale by closeness. Minimal: the colour <em>is</em> the feedback.</p>
+      <div class="chips" id="optD"><span class="empty">Your guesses will appear here.</span></div>
+    </div>
+  </div>
+
+  <p class="footer">
+    Closeness = alphabetical distance, normalised against the opening window. Direction (earlier/later) is shown where it helps.
+    Answer is fixed per session — hit Reset for a new one.
+  </p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // A small pool so the demo feels real. All 5 letters, between ABOUT and WORLD.
+  var POOL = ["apple","beach","cloud","dance","eagle","flame","grape","house",
+              "ivory","joker","knife","lemon","mango","noble","ocean","pride",
+              "quilt","raven","stone","tiger","unity","vivid","wharf","plant","crane","brick"];
+
+  var LOWER = "about", UPPER = "world";
+  var answer = pick();
+
+  function pick() { return POOL[Math.floor(Math.random() * POOL.length)]; }
+
+  // Map a 5-letter word to a number on an alphabetical number-line (base 26).
+  function alphaValue(w) {
+    var v = 0;
+    for (var i = 0; i < 5; i++) {
+      var c = i < w.length ? w.charCodeAt(i) - 97 : 0;
+      v = v * 26 + Math.max(0, Math.min(25, c));
+    }
+    return v;
+  }
+
+  var loVal = alphaValue(LOWER);
+  var hiVal = alphaValue(UPPER);
+  var windowSpan = Math.max(1, hiVal - loVal);
+
+  // closeness in [0,1]: 1 = exact answer, 0 = a full window away.
+  function closeness(guess) {
+    var d = Math.abs(alphaValue(guess) - alphaValue(answer));
+    return Math.max(0, 1 - d / windowSpan);
+  }
+
+  // position of a word along the current window, [0,1] top->bottom
+  function trackPos(guess) {
+    var p = (alphaValue(guess) - loVal) / windowSpan;
+    return Math.max(0, Math.min(1, p));
+  }
+
+  // cold(blue) -> hot(red) based on closeness
+  function heat(c) {
+    // interpolate between #3b6ea5 (cold) and #d64545 (hot), via warm amber midway
+    var stops = [[59,110,165],[232,184,0],[214,69,69]];
+    var seg = c < 0.5 ? 0 : 1;
+    var t = c < 0.5 ? c / 0.5 : (c - 0.5) / 0.5;
+    var a = stops[seg], b = stops[seg + 1];
+    var r = Math.round(a[0] + (b[0]-a[0])*t);
+    var g = Math.round(a[1] + (b[1]-a[1])*t);
+    var bl = Math.round(a[2] + (b[2]-a[2])*t);
+    return "rgb(" + r + "," + g + "," + bl + ")";
+  }
+
+  var guesses = []; // {word, close, pos, dir}
+
+  var el = {
+    input: document.getElementById("guessInput"),
+    guess: document.getElementById("guessBtn"),
+    reset: document.getElementById("resetBtn"),
+    err: document.getElementById("err"),
+    optA: document.getElementById("optA"),
+    optD: document.getElementById("optD"),
+    jawTop: document.getElementById("jawTop"),
+    jawBottom: document.getElementById("jawBottom"),
+    jawMid: document.getElementById("jawMid"),
+    track: document.getElementById("optC"),
+    stackAbove: document.getElementById("stackAbove"),
+    stackBelow: document.getElementById("stackBelow")
+  };
+
+  function validate(w) {
+    if (w.length !== 5) return "Enter a 5-letter word.";
+    if (!(LOWER < w && w < UPPER)) return "Must fall between " + LOWER.toUpperCase() + " and " + UPPER.toUpperCase() + ".";
+    return null;
+  }
+
+  function submit() {
+    var w = el.input.value.toLowerCase().replace(/[^a-z]/g, "");
+    var problem = validate(w);
+    if (problem) { el.err.textContent = problem; return; }
+    el.err.textContent = "";
+
+    if (w === answer) {
+      el.err.style.color = "#2f9e44";
+      el.err.textContent = "That's the word! (Reset for a new one.)";
+    } else {
+      el.err.style.color = "";
+    }
+
+    var c = closeness(w);
+    var dir = alphaValue(w) < alphaValue(answer) ? "later" : "earlier"; // where the answer is relative to guess
+    guesses.unshift({ word: w, close: c, pos: trackPos(w), dir: dir });
+    el.input.value = "";
+    render();
+  }
+
+  function render() {
+    renderA();
+    renderB();
+    renderC();
+    renderD();
+    renderE();
+  }
+
+  // E — merged sandwich stack (the recommended one)
+  function renderE() {
+    // "later" = answer is later than the guess => guess is a LOWER bound => sits ABOVE.
+    var above = guesses.filter(function (g) { return g.dir === "later"; });
+    var below = guesses.filter(function (g) { return g.dir === "earlier"; });
+
+    // Closest hugs the centre: above sorted so hottest is last (nearest answer),
+    // below sorted so hottest is first (nearest answer).
+    above.sort(function (a, b) { return a.close - b.close; });
+    below.sort(function (a, b) { return b.close - a.close; });
+
+    el.stackAbove.innerHTML = above.length
+      ? above.map(function (g) { return stackWordHTML(g, "down"); }).join("")
+      : '<div class="stackEmpty">guesses before the answer appear here</div>';
+    el.stackBelow.innerHTML = below.length
+      ? below.map(function (g) { return stackWordHTML(g, "up"); }).join("")
+      : '<div class="stackEmpty">guesses after the answer appear here</div>';
+  }
+
+  function stackWordHTML(g, arrowDir) {
+    // The further off, the more it's pushed away from the centre line.
+    var indent = Math.round((1 - g.close) * 28); // 0..28px outward margin
+    var marginSide = arrowDir === "down" ? "margin-top" : "margin-bottom";
+    var arrow = arrowDir === "down" ? "↓" : "↑";
+    return '<div class="stackRow" style="' + marginSide + ':' + indent + 'px">' +
+      '<div class="stackWord">' +
+        '<span>' + g.word.toUpperCase() + '</span>' +
+        '<span class="meta">' +
+          '<span class="arrow">' + arrow + '</span>' +
+          '<span class="pct">' + Math.round(g.close * 100) + '%</span>' +
+        '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // A — proximity bars
+  function renderA() {
+    if (!guesses.length) { el.optA.innerHTML = '<span class="empty">Your guesses will appear here.</span>'; return; }
+    el.optA.innerHTML = guesses.map(function (g) {
+      var pct = Math.round(g.close * 100);
+      return '<div class="barRow">' +
+        '<span class="w">' + g.word.toUpperCase() + '</span>' +
+        '<span class="barTrack"><span class="barFill" style="width:' + pct + '%;background:' + heat(g.close) + '"></span></span>' +
+        '</div>';
+    }).join("");
+  }
+
+  // B — closing jaws (latest guess)
+  function renderB() {
+    var g = guesses[0];
+    if (!g) { el.jawTop.style.height = el.jawBottom.style.height = "8%"; el.jawMid.textContent = "No guess yet"; return; }
+    // closer guess => the jaw on the guess's side travels further in.
+    var travel = 8 + g.close * 42; // 8%..50%
+    if (g.dir === "earlier") {
+      // answer is earlier => guess was too high => top jaw closes down
+      el.jawTop.style.height = travel + "%";
+      el.jawBottom.style.height = "8%";
+      el.jawTop.textContent = g.word.toUpperCase() + " ↓";
+      el.jawBottom.textContent = "";
+    } else {
+      el.jawBottom.style.height = travel + "%";
+      el.jawTop.style.height = "8%";
+      el.jawBottom.textContent = "↑ " + g.word.toUpperCase();
+      el.jawTop.textContent = "";
+    }
+    el.jawMid.textContent = Math.round(g.close * 100) + "% close";
+  }
+
+  // C — dots on a track
+  function renderC() {
+    // clear existing dots (keep labels)
+    Array.prototype.slice.call(el.track.querySelectorAll(".dot")).forEach(function (n) { n.remove(); });
+    guesses.forEach(function (g, idx) {
+      var dot = document.createElement("div");
+      dot.className = "dot";
+      dot.style.top = (8 + g.pos * 84) + "%";
+      var side = g.pos < 0.5 ? "" : " right";
+      dot.innerHTML =
+        '<span class="bead" style="background:' + heat(g.close) + ';box-shadow:0 0 ' + Math.round(g.close*14) + 'px ' + heat(g.close) + '"></span>' +
+        '<span class="tag' + side + '" style="color:' + (idx===0? "#1c1a17":"#9a9384") + '">' + g.word.toUpperCase() + '</span>';
+      el.track.appendChild(dot);
+    });
+  }
+
+  // D — heat chips
+  function renderD() {
+    if (!guesses.length) { el.optD.innerHTML = '<span class="empty">Your guesses will appear here.</span>'; return; }
+    el.optD.innerHTML = guesses.map(function (g) {
+      return '<span class="chip" style="background:' + heat(g.close) + '">' + g.word.toUpperCase() + '</span>';
+    }).join("");
+  }
+
+  el.guess.addEventListener("click", submit);
+  el.input.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+  el.reset.addEventListener("click", function () {
+    answer = pick();
+    guesses = [];
+    el.err.textContent = "";
+    el.input.value = "";
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
