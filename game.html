@@ -100,13 +100,22 @@
       align-items: center;
       gap: 0.15em;
     }
-    /* Thermometer icon: mercury height + colour set inline per guess. The
-       outline uses currentColor, so it inherits the muted meta text colour. */
-    .thermo-icon {
-      width: 1.15em;
-      height: 1.15em;
-      vertical-align: -0.2em;
-      flex: 0 0 auto;
+    /* Horizontal thermometer (bar mode): a track that fills left->right with
+       the heat colour by closeness. Width scales with the bound word. */
+    .heatbar {
+      display: inline-block;
+      width: 3.4em;
+      height: 0.62em;
+      border-radius: 999px;
+      background: rgba(120, 120, 120, 0.22);
+      overflow: hidden;
+      vertical-align: -0.05em;
+    }
+    .heatbar-fill {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease, background 0.4s ease;
     }
 
     .bound.move-top { animation: move-to-top 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
@@ -517,6 +526,7 @@
       <p class="start-label">Choose a feedback mode</p>
       <div class="start-modes">
         <button class="btn" data-mode="percent">Percentage</button>
+        <button class="btn" data-mode="bar">Thermometer</button>
         <button class="btn" data-mode="locking">Locking</button>
       </div>
       <p class="seed-line" id="startSeed"></p>
@@ -1294,7 +1304,7 @@
       // production dictionary, whose rank density differs from this list's.
       var THERMO_LOG_MIX = 1;
 
-      var MODES = ["control", "percent", "locking"];
+      var MODES = ["control", "percent", "bar", "locking"];
 
       var DEFAULT_MSG = 'Find the word <em>alphabetically</em> in between';
 
@@ -1941,26 +1951,6 @@
         return "rgb(" + r + "," + g + "," + bl + ")";
       }
 
-      // A small thermometer whose mercury rises with closeness and takes the
-      // heat colour. Bulb is always filled; the stem fills from the bulb up to
-      // `ratio` of its height.
-      function thermoIconHTML(ratio) {
-        var color = heatColor(ratio);
-        var stemTop = 4, stemBottom = 15.5, usable = stemBottom - stemTop;
-        var mercTop = stemBottom - ratio * usable;
-        return '<svg class="thermo-icon" viewBox="0 0 24 24" aria-hidden="true">' +
-          // outline
-          '<rect x="9" y="2" width="6" height="15" rx="3" fill="none" ' +
-            'stroke="currentColor" stroke-width="1.6"/>' +
-          '<circle cx="12" cy="18.5" r="4.4" fill="none" ' +
-            'stroke="currentColor" stroke-width="1.6"/>' +
-          // mercury: bulb + rising column
-          '<circle cx="12" cy="18.5" r="2.9" fill="' + color + '"/>' +
-          '<rect x="10.55" y="' + mercTop.toFixed(2) + '" width="2.9" height="' +
-            (stemBottom - mercTop + 2).toFixed(2) + '" rx="1.45" fill="' + color + '"/>' +
-          '</svg>';
-      }
-
       // Only the player's own guesses carry a readout. The opening bounds are
       // given, not guessed, and are explicitly not clues -- annotating them
       // would mislead.
@@ -2009,15 +1999,28 @@
         return { below: below, above: above };
       }
 
-      // The percent readout pairs a thermometer icon (heat = how close) with
-      // the number. Direction is already conveyed by which side of the answer
-      // the word sits on, so no arrow is needed.
+      // A horizontal thermometer: a track that fills left->right with the heat
+      // colour by closeness. Same signal as the percent, shown as a bar with
+      // no number.
+      function thermoBarHTML(ratio) {
+        var color = heatColor(ratio);
+        var pct = Math.round(ratio * 100);
+        return '<span class="heatbar">' +
+          '<span class="heatbar-fill" style="width:' + pct + '%;background:' +
+            color + '"></span>' +
+        '</span>';
+      }
+
+      // The percent readout shows just the number. The bar mode shows a
+      // horizontal thermometer instead, no number. Direction is already
+      // conveyed by which side of the answer the word sits on.
       function boundHTML(word, side) {
         var html = word.toUpperCase();
         if (state.mode === "percent" && wasGuessed(word)) {
-          var ratio = closenessRatio(word);
-          html += '<span class="bound-meta">' + thermoIconHTML(ratio) + " " +
-            closenessPct(word) + "%</span>";
+          html += '<span class="bound-meta">' + closenessPct(word) + "%</span>";
+        } else if (state.mode === "bar" && wasGuessed(word)) {
+          html += '<span class="bound-meta">' +
+            thermoBarHTML(closenessRatio(word)) + "</span>";
         }
         return html;
       }
