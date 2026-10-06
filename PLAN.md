@@ -44,7 +44,13 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
-## [ ] Phase 2 — Closeness engine · CHECKPOINT
+## [x] Phase 2 — Closeness engine · CHECKPOINT
+
+<!-- Done: pure closeness(guess,answer)->0..100, rank-based (RANK_IN_LENGTH)
+     exponential decay pct=100*exp(-d/CLOSENESS_CURVE), CLOSENESS_CURVE=1500
+     (decay length in ranks). 100 only for exact answer, else capped 99,
+     monotonic, works at band ends. Closeness table in ••• menu. Self-tests 10.
+     Reviewer PASS. STOPPED for Lachlan to tune CLOSENESS_CURVE before Phase 3. -->
 
 - Expose one pure function: `closeness(guess, answer) → integer 0–100`.
 - Base it on the kept percent-mode maths from Phase 0. It must meet these rules. If the existing maths breaks one, change it and say so.
@@ -138,3 +144,6 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 ## Decisions to confirm
 
 - Phase 0 ❓ The ••• / Prototype menu cards use hardcoded `#fff`/rgba rather than `:root` tokens (same as game.html's overlays). OK to keep, or tokenise?
+- Phase 2 ❓ `CLOSENESS_CURVE` default is 1500 (exponential decay length, in ranks). Tune before Phase 3.
+- Phase 2 ❓ The first ~50 ranks still read 97–99; the spread kicks in past ~100 ranks. Is that near-region flatness acceptable, or lower CLOSENESS_CURVE to spread it more?
+- Phase 2 ❓ The Closeness table renders 13 rows (12 words + the answer row), offsets ±[1,10,50,150,500,1500].

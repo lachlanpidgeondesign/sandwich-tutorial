@@ -381,6 +381,82 @@
     }
     .menu-item:hover { background: rgba(0, 0, 0, 0.05); }
 
+    /* Closeness table sheet (dev tool). Centered scrollable card. */
+    .sheet-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 46;
+      background: rgba(26, 34, 48, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      animation: fade 0.2s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    .sheet-overlay[hidden] { display: none; }
+    .sheet-card {
+      width: 100%;
+      max-width: 420px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 60px rgba(0, 0, 0, 0.3);
+      animation: prompt-in 0.2s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 8px;
+    }
+    .sheet-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--foreground);
+    }
+    .sheet-close {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: transparent;
+      font-size: 24px;
+      line-height: 1;
+      color: var(--muted-foreground);
+      cursor: pointer;
+      border-radius: 8px;
+    }
+    .sheet-close:hover { background: rgba(0, 0, 0, 0.05); }
+    .sheet-body {
+      overflow-y: auto;
+      padding: 0 16px 16px;
+    }
+    .ctable {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+      font-size: 14px;
+    }
+    .ctable th, .ctable td {
+      text-align: right;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ctable th:first-child, .ctable td:first-child { text-align: left; }
+    .ctable th {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+    .ctable tr.answer td {
+      font-weight: 700;
+      color: var(--accent);
+    }
+
     /* Nothing here is load-bearing motion: every entrance animation uses "both"
        fill, so a near-zero duration settles on its end state. */
     @media (prefers-reduced-motion: reduce) {
@@ -430,7 +506,19 @@
   <div class="menu-overlay" id="menuOverlay" hidden>
     <div class="menu-card" role="menu" aria-label="Prototype">
       <p class="menu-title">Prototype</p>
+      <button class="menu-item" id="menuClosenessTable" role="menuitem" type="button">Closeness table</button>
       <button class="menu-item" id="menuResetAll" role="menuitem" type="button">Reset everything</button>
+    </div>
+  </div>
+
+  <!-- Closeness table (dev tool: inspect the % curve around the answer) -->
+  <div class="sheet-overlay" id="tableOverlay" hidden>
+    <div class="sheet-card" role="dialog" aria-label="Closeness table">
+      <div class="sheet-head">
+        <p class="sheet-title" id="tableTitle">Closeness table</p>
+        <button class="sheet-close" id="tableClose" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="sheet-body" id="tableBody"></div>
     </div>
   </div>
 
@@ -29056,12 +29144,6 @@
           seed: o.seed,
           answer: puzzle.answer,
 
-          // The opening bounds. Kept as the baseline the closeness % measures
-          // against (see closenessPct), so the same guess always scores the
-          // same regardless of how the live bounds have since tightened.
-          startLower: puzzle.lower,
-          startUpper: puzzle.upper,
-
           lower: puzzle.lower,
           upper: puzzle.upper,
           prevLower: null,
@@ -29258,7 +29340,7 @@
           rankDistance: Math.abs(rankOf(w) - rankOf(state.answer)),
           legalGuessesLeftInWindow:
             wordsBetweenOfLength(state.lower, state.upper, state.answer.length),
-          closeness: closenessPct(w),
+          closeness: closeness(w, state.answer),
           guessesRemaining: state.guessesLeft,
           lower: state.lower,
           upper: state.upper
@@ -29350,38 +29432,73 @@
         return parts.join("&nbsp;");
       }
 
-      // ---- Closeness readout ----------------------------------------------
-      // How near a guess landed to the answer, measured on the same
-      // alphabetical number-line the whole game runs on -- nothing here
-      // consults the hidden word list, so it stays player-verifiable. 100%
-      // means the guess sits on the answer; 0% means a full opening-window away.
-      function alphaValueLen(w, len) {
-        var v = 0;
-        for (var i = 0; i < len; i++) {
-          var c = i < w.length ? w.charCodeAt(i) - 97 : 0;
-          if (c < 0) c = 0;
-          if (c > 25) c = 25;
-          v = v * 26 + c;
-        }
-        return v;
+      // ---- Closeness engine -----------------------------------------------
+      // closeness(guess, answer) -> integer 0..100. The single source of truth
+      // for the % thermometer.
+      //
+      // It is measured in RANK within the same-length band (RANK_IN_LENGTH),
+      // across the WHOLE word list -- never the current bounds -- so the same
+      // guess always scores the same % for a given answer, however far the
+      // bounds have since closed in. 100 is reserved for the exact answer; any
+      // other word is capped at 99. It is monotonic in rank distance: a guess
+      // nearer the answer never scores lower than one further away.
+      //
+      // The scale is an exponential decay in rank distance:
+      //   pct = 100 * exp(-d / CLOSENESS_CURVE)
+      // CLOSENESS_CURVE is the decay length, measured IN RANKS -- the number of
+      // words over which the score falls by a factor of e (to ~37%). A smaller
+      // value spreads the scale (the near region drops away faster); a larger
+      // value flattens it. A plain linear map would leave the few hundred words
+      // just before the answer all reading 97-99; this curve spreads them out.
+      // Lachlan tunes this in Phase 3; it is the one knob.
+      var CLOSENESS_CURVE = 1500;
+
+      function closeness(guess, answer) {
+        if (guess === answer) return 100;
+        var len = answer.length;
+        var ai = RANK_IN_LENGTH.get(answer);
+        var gi = RANK_IN_LENGTH.get(guess);
+        // A guess of a different length, or not in WORDS, shares no rank line
+        // with the answer: treat it as maximally far. (The game never calls it
+        // with such a word -- validation runs first -- but the pure function
+        // must still return a sane value.)
+        if (ai === undefined || gi === undefined || guess.length !== len) return 0;
+        var d = Math.abs(gi - ai);
+        var pct = Math.round(100 * Math.exp(-d / CLOSENESS_CURVE));
+        if (pct >= 100) pct = 99; // only the exact answer is 100
+        if (pct < 0) pct = 0;
+        return pct;
       }
 
-      function closenessPct(word) {
-        var len = state.answer.length;
-        var span = Math.abs(
-          alphaValueLen(state.startUpper, len) - alphaValueLen(state.startLower, len)
-        );
-        if (span < 1) span = 1;
-        var d = Math.abs(alphaValueLen(word, len) - alphaValueLen(state.answer, len));
-        var c = 1 - d / span;
-        if (c < 0) c = 0;
-        if (c >= 1) return "100"; // exact answer only
+      // Dev-tool only: rows for the Closeness table, 12 words at increasing rank
+      // distance from `answer` (6 below, 6 above) plus the answer row in the
+      // middle. Each row is { word, dist (signed rank distance), pct }. Used by
+      // the Prototype menu to inspect the curve while tuning CLOSENESS_CURVE.
+      var CLOSENESS_TABLE_OFFSETS = [1, 10, 50, 150, 500, 1500];
 
-        // One decimal, and never allow a non-exact guess to round up to 100:
-        // floor to the tenth so 99.97% reads 99.9%, keeping 100% meaningful.
-        var pct = Math.floor(c * 1000) / 10;
-        if (pct >= 100) pct = 99.9;
-        return pct.toFixed(1);
+      function closenessTableRows(answer) {
+        var len = answer.length;
+        var band = BY_LENGTH.get(len) || [];
+        var N = band.length;
+        var ai = RANK_IN_LENGTH.get(answer);
+        if (ai === undefined || N === 0) return [];
+        var rows = [];
+        function rowAt(idx, sign) {
+          if (idx < 0 || idx > N - 1) return null;
+          var w = band[idx];
+          return { word: w, dist: sign * Math.abs(idx - ai), pct: closeness(w, answer) };
+        }
+        var offs = CLOSENESS_TABLE_OFFSETS;
+        for (var i = offs.length - 1; i >= 0; i--) {
+          var r = rowAt(ai - offs[i], -1);
+          if (r) rows.push(r);
+        }
+        rows.push({ word: answer, dist: 0, pct: 100 });
+        for (var j = 0; j < offs.length; j++) {
+          var ra = rowAt(ai + offs[j], 1);
+          if (ra) rows.push(ra);
+        }
+        return rows;
       }
 
       // Only the player's own guesses carry a readout. The opening bounds are
@@ -29400,7 +29517,7 @@
       function boundHTML(word, side) {
         var html = word.toUpperCase();
         if (wasGuessed(word)) {
-          html += '<span class="bound-meta">' + closenessPct(word) + "%</span>";
+          html += '<span class="bound-meta">' + closeness(word, state.answer) + "%</span>";
         }
         return html;
       }
@@ -29570,8 +29687,52 @@
       });
       document.getElementById("menuResetAll").addEventListener("click", resetEverything);
 
+      // ---- Closeness table (dev tool) ----
+      var tableOverlay = document.getElementById("tableOverlay");
+      var tableBody = document.getElementById("tableBody");
+      var tableTitle = document.getElementById("tableTitle");
+
+      function esc(s) {
+        return String(s).replace(/[&<>]/g, function (ch) {
+          return ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : "&gt;";
+        });
+      }
+
+      function showClosenessTable() {
+        if (!state) return;
+        var answer = state.answer;
+        tableTitle.textContent = "Closeness table — " + answer.toUpperCase();
+        var rows = closenessTableRows(answer);
+        var html = '<table class="ctable"><thead><tr>' +
+          "<th>Word</th><th>Rank &Delta;</th><th>%</th></tr></thead><tbody>";
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          var d = r.dist === 0 ? "0" : (r.dist > 0 ? "+" + r.dist : String(r.dist));
+          html += "<tr" + (r.dist === 0 ? ' class="answer"' : "") + ">" +
+            "<td>" + esc(r.word.toUpperCase()) + "</td>" +
+            "<td>" + d + "</td>" +
+            "<td>" + r.pct + "%</td></tr>";
+        }
+        html += "</tbody></table>";
+        tableBody.innerHTML = html;
+        closeMenu();
+        tableOverlay.hidden = false;
+      }
+
+      function closeClosenessTable() { tableOverlay.hidden = true; }
+
+      document.getElementById("menuClosenessTable").addEventListener("click", showClosenessTable);
+      document.getElementById("tableClose").addEventListener("click", closeClosenessTable);
+      tableOverlay.addEventListener("click", function (e) {
+        if (e.target === tableOverlay) closeClosenessTable();
+      });
+
       // Physical keyboard support
       document.addEventListener("keydown", function (e) {
+        if (!tableOverlay.hidden) {
+          if (e.key === "Escape") closeClosenessTable();
+          return;
+        }
         if (!menuOverlay.hidden && e.key === "Escape") { closeMenu(); return; }
         if (!menuOverlay.hidden || !state || state.gameOver) return;
         if (e.key === "Enter") {
@@ -29641,6 +29802,93 @@
           fn: function () {
             var spent = validateGuess("stqne", "stone", "sport", "stuck") !== null;
             return spent ? true : "rejected guess did not report a problem";
+          }
+        },
+        {
+          // Phase 2 rule: rank-measured in the same-length band, deterministic,
+          // never dependent on bounds (closeness takes no bounds argument).
+          name: "closeness is rank-based in the same-length band and deterministic",
+          fn: function () {
+            var a = "skirt";
+            if (RANK_IN_LENGTH.get(a) === undefined) return "'skirt' not in the 5-band";
+            if (closeness("store", a) !== closeness("store", a)) return "not deterministic";
+            if (closeness("shoe", a) !== 0) return "different-length guess not treated as far";
+            var band = BY_LENGTH.get(5), ai = RANK_IN_LENGTH.get(a), N = band.length;
+            var near = band[Math.min(ai + 1, N - 1)];
+            var far = band[Math.min(ai + 500, N - 1)];
+            if (!(closeness(near, a) > closeness(far, a))) return "nearer word did not score higher";
+            return true;
+          }
+        },
+        {
+          // Phase 2 rule: 100 is reserved for the exact answer; everything else
+          // is capped at 99. Scans the whole band to be sure.
+          name: "closeness returns 100 only for the exact answer",
+          fn: function () {
+            var a = "skirt", band = BY_LENGTH.get(5), ai = RANK_IN_LENGTH.get(a);
+            if (closeness(a, a) !== 100) return "answer itself not 100";
+            for (var i = 0; i < band.length; i++) {
+              if (i !== ai && closeness(band[i], a) >= 100) {
+                return "non-answer '" + band[i] + "' scored 100";
+              }
+            }
+            return true;
+          }
+        },
+        {
+          // Phase 2 rule: monotonic -- a word nearer in rank never scores lower
+          // than one further away, on either side of the answer.
+          name: "closeness is monotonic in rank distance (both sides)",
+          fn: function () {
+            var a = "skirt", band = BY_LENGTH.get(5), ai = RANK_IN_LENGTH.get(a), N = band.length;
+            var offs = [0, 1, 3, 10, 40, 160, 640];
+            var prev = 101, i, p;
+            for (i = 0; i < offs.length; i++) {
+              if (ai + offs[i] > N - 1) break;
+              p = closeness(band[ai + offs[i]], a);
+              if (p > prev) return "above not monotonic at +" + offs[i];
+              prev = p;
+            }
+            prev = 101;
+            for (i = 0; i < offs.length; i++) {
+              if (ai - offs[i] < 0) break;
+              p = closeness(band[ai - offs[i]], a);
+              if (p > prev) return "below not monotonic at -" + offs[i];
+              prev = p;
+            }
+            return true;
+          }
+        },
+        {
+          // Phase 2 rule: works for the first and last words of the band.
+          name: "closeness works for the first and last words of the band",
+          fn: function () {
+            var band = BY_LENGTH.get(5), N = band.length;
+            var first = band[0], last = band[N - 1];
+            if (closeness(first, first) !== 100) return "first-as-answer self not 100";
+            var inRange = function (x) { return x >= 0 && x <= 99; };
+            if (!inRange(closeness(last, first))) return "last vs first out of range";
+            if (!inRange(closeness(first, last))) return "first vs last out of range";
+            if (!inRange(closeness(band[1], first))) return "neighbour of first out of range";
+            return true;
+          }
+        },
+        {
+          // Phase 2 rule: the curve spreads the near-answer region so the few
+          // hundred words before the answer cover a meaningful range, not 97-99.
+          name: "the curve spreads the near-answer region (not flat at 97-99)",
+          fn: function () {
+            var a = "skirt", band = BY_LENGTH.get(5), ai = RANK_IN_LENGTH.get(a), N = band.length;
+            // pick a side with at least 500 words of room
+            var sign = (ai + 500 <= N - 1) ? 1 : -1;
+            var d1 = closeness(band[ai + sign * 1], a);
+            var d150 = closeness(band[ai + sign * 150], a);
+            var d500 = closeness(band[ai + sign * 500], a);
+            // The near few hundred words must have left the 97-99 band...
+            if (d150 >= 96) return "word 150 ranks away still >=96 (" + d150 + "): curve too flat";
+            // ...and the first 500 words must cover a wide range.
+            if (!(d1 - d500 >= 10)) return "first 500 words span <10 points (" + d1 + "->" + d500 + ")";
+            return true;
           }
         }
       ];
