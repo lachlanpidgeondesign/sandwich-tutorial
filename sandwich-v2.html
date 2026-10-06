@@ -43,6 +43,83 @@
       display: flex;
       flex-direction: column;
     }
+    /* A class and an attribute selector tie, so without this the author
+       .app{display:flex} would beat the UA [hidden]{display:none}. */
+    .app[hidden], .levels[hidden] { display: none; }
+
+    /* Level select (home screen) ----------------------------------------- */
+    .levels {
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 72px 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      min-height: 100dvh;
+    }
+    .levels-title {
+      font-family: "Literata", Georgia, serif;
+      font-size: 30px;
+      font-weight: 700;
+      text-align: center;
+      color: var(--foreground);
+    }
+    .level-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .level-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      min-height: 72px;
+      padding: 16px 20px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .level-card:active { background: rgba(0, 0, 0, 0.03); }
+    .level-card-num {
+      font-family: "Literata", Georgia, serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--foreground);
+    }
+    .level-card-status {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted-foreground);
+    }
+    .level-card.solved .level-card-status { color: var(--accent); }
+
+    /* Back control (visible only inside a level) */
+    .back-btn {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 40;
+      width: 44px;
+      height: 44px;
+      border: none;
+      background: transparent;
+      color: var(--muted-foreground);
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 700;
+      cursor: pointer;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .back-btn[hidden] { display: none; }
+    .back-btn:hover { background: rgba(0, 0, 0, 0.05); }
 
     /* Subtitle / status line */
     .subtitle {
@@ -513,10 +590,18 @@
   </style>
 </head>
 <body>
+  <button class="back-btn" id="backBtn" type="button"
+          aria-label="Back to levels" hidden>&#8249;</button>
   <button class="menu-btn" id="menuBtn" type="button"
           aria-haspopup="true" aria-label="Prototype menu">&#8942;</button>
 
-  <div class="app">
+  <!-- Level select (the home screen) -->
+  <section class="levels" id="levelsScreen" hidden>
+    <h1 class="levels-title">Levels</h1>
+    <div class="level-cards" id="levelCards"></div>
+  </section>
+
+  <div class="app" hidden>
     <p class="subtitle" id="subtitle">
       Find the word <em>alphabetically</em> in between
     </p>
@@ -546,9 +631,7 @@
   <div class="prompt" id="promptOverlay" hidden>
     <div class="prompt-card">
       <p class="prompt-text" id="promptText"></p>
-      <div class="prompt-actions">
-        <button class="btn btn-primary" id="promptAgain">Play again</button>
-      </div>
+      <div class="prompt-actions" id="promptActions"></div>
       <p class="seed-line" id="promptSeed"></p>
     </div>
   </div>
@@ -558,6 +641,7 @@
     <div class="menu-card" role="menu" aria-label="Prototype">
       <p class="menu-title">Prototype</p>
       <button class="menu-item" id="menuClosenessTable" role="menuitem" type="button">Closeness table</button>
+      <button class="menu-item" id="menuResetLevels" role="menuitem" type="button">Reset level results</button>
       <button class="menu-item" id="menuResetAll" role="menuitem" type="button">Reset everything</button>
     </div>
   </div>
@@ -29101,7 +29185,6 @@
         q.answer = word("answer");
         q.lower = word("lower");
         q.upper = word("upper");
-        q.levels = p.has("levels");
         q.level = num("level");
         q.selftest = p.has("selftest");
         return q;
@@ -29143,47 +29226,123 @@
       var state;
       var currentSeed;
 
-      // ---- Level pack (accessed via ?levels) --------------------------------
-      // A fixed, ordered sequence of answers played back to back in one link.
-      // Same game, same mechanics -- only the answer is pinned per level and the
-      // end-of-level prompt advances instead of reshuffling. Reach it at
-      // sandwich-v2.html?levels (optionally &level=N to jump in). This is the
-      // old prototype plumbing; Phase 4 replaces it with a proper level screen.
+      // ---- Levels -----------------------------------------------------------
+      // Three fixed levels. Each pins its answer (forcedLevelAnswer, read by
+      // buildPuzzle) so its bounds are identical on every play -- boundsAround
+      // is deterministic, so the fixed seed only labels the game, it never moves
+      // the bounds. Results persist in localStorage under LEVELS_KEY; only a
+      // FINISHED level writes one, so backing out mid-level saves nothing.
       var LEVEL_WORDS = ["skirt", "drink", "couch", "stone", "earth"];
-      var LEVELS_ACTIVE = QUERY.levels;
-      var levelIndex = 0;             // 0-based current level
-      var forcedLevelAnswer = null;   // read by buildPuzzle while a level loads
+      var LEVEL_COUNT = 3;                 // only the first three are levels
+      var LEVEL_SEEDS = [1, 2, 3];         // fixed label seed per level
+      var LEVELS_KEY = "sandwich-v2-levels";
+      var currentLevelIndex = null;        // null = not currently in a level
+      var forcedLevelAnswer = null;        // read by buildPuzzle while loading
 
-      // Load the current level: pin its answer, build the puzzle, clear the pin.
-      function loadLevel() {
-        forcedLevelAnswer = LEVEL_WORDS[levelIndex];
-        newGame(currentSeed);
-        forcedLevelAnswer = null;
+      var levelsScreen = document.getElementById("levelsScreen");
+      var levelCardsEl = document.getElementById("levelCards");
+      var appEl = document.querySelector(".app");
+      var backBtn = document.getElementById("backBtn");
+
+      // Stored shape: { "0": {solved:true, guesses:4}, "1": {solved:false} }.
+      function loadLevelResults() {
+        try {
+          var raw = localStorage.getItem(LEVELS_KEY);
+          return raw ? (JSON.parse(raw) || {}) : {};
+        } catch (e) { return {}; }
+      }
+      function saveLevelResult(idx, solved, guesses) {
+        try {
+          var all = loadLevelResults();
+          all[idx] = solved ? { solved: true, guesses: guesses } : { solved: false };
+          localStorage.setItem(LEVELS_KEY, JSON.stringify(all));
+        } catch (e) { /* storage unavailable: the result just isn't remembered */ }
+      }
+      function resetLevelResults() {
+        try { localStorage.removeItem(LEVELS_KEY); } catch (e) { /* nothing to clear */ }
+        renderLevelCards();
+      }
+      function levelStatus(idx) {
+        var r = loadLevelResults()[idx];
+        if (!r) return { text: "Not played", solved: false };
+        if (r.solved) return { text: "Solved in " + r.guesses, solved: true };
+        return { text: "Not solved", solved: false };
       }
 
-      // Advance to the next level, wrapping back to the first after the last.
-      function advanceLevel() {
-        hidePrompt();
-        levelIndex = (levelIndex + 1) % LEVEL_WORDS.length;
+      function renderLevelCards() {
+        levelCardsEl.innerHTML = "";
+        for (var i = 0; i < LEVEL_COUNT; i++) {
+          (function (idx) {
+            var st = levelStatus(idx);
+            var card = document.createElement("button");
+            card.type = "button";
+            card.className = "level-card" + (st.solved ? " solved" : "");
+            card.setAttribute("data-level", idx);
+            var num = document.createElement("span");
+            num.className = "level-card-num";
+            num.textContent = "Level " + (idx + 1);
+            var status = document.createElement("span");
+            status.className = "level-card-status";
+            status.textContent = st.text;
+            card.appendChild(num);
+            card.appendChild(status);
+            card.addEventListener("click", function () { startLevel(idx); });
+            levelCardsEl.appendChild(card);
+          })(i);
+        }
+      }
+
+      function showLevelScreen() {
+        currentLevelIndex = null;
+        renderLevelCards();
+        appEl.hidden = true;
+        backBtn.hidden = true;
+        levelsScreen.hidden = false;
+      }
+
+      function startLevel(idx) {
+        currentLevelIndex = idx;
+        levelsScreen.hidden = true;
+        appEl.hidden = false;
+        backBtn.hidden = false;
         loadLevel();
       }
 
-      // End-of-level prompt: a single button that moves the player forward.
+      // Pin the current level's answer and build it with its fixed label seed.
+      function loadLevel() {
+        forcedLevelAnswer = LEVEL_WORDS[currentLevelIndex];
+        newGame(LEVEL_SEEDS[currentLevelIndex]);
+        forcedLevelAnswer = null;
+      }
+
+      // Back out of a level without finishing it: no result is saved.
+      function backToLevels() {
+        hidePrompt();
+        showLevelScreen();
+      }
+
+      // End-of-level prompt: Next level (unless on the last) and Back to levels.
       function showLevelPrompt(won) {
-        var n = levelIndex + 1, total = LEVEL_WORDS.length;
-        var isLast = levelIndex >= total - 1;
-        var word = LEVEL_WORDS[levelIndex].toUpperCase();
-        var headline = won
-          ? "Level " + n + " solved: <strong>" + word + "</strong>"
-          : "Out of guesses — level " + n + " was <strong>" + word + "</strong>";
-        var tail = isLast
-          ? (won ? " &mdash; all " + total + " levels complete!" : "")
-          : "";
-        promptText.innerHTML = headline + tail + ".";
-        promptSeed.textContent = "Level " + n + " of " + total;
-        promptAgainBtn.textContent = isLast
-          ? (won ? "Play again" : "Retry levels")
-          : (won ? "Next level" : "Retry level");
+        var n = currentLevelIndex + 1;
+        var word = LEVEL_WORDS[currentLevelIndex].toUpperCase();
+        var isLast = currentLevelIndex >= LEVEL_COUNT - 1;
+        var used = state.guesses.length;
+        promptText.innerHTML = won
+          ? "Level " + n + " solved — <strong>" + word + "</strong> in " +
+            used + (used === 1 ? " guess." : " guesses.")
+          : "Out of guesses — level " + n + " was <strong>" + word + "</strong>.";
+        promptSeed.textContent = "Level " + n + " of " + LEVEL_COUNT;
+        var actions = [];
+        if (!isLast) {
+          actions.push({
+            label: "Next level", primary: true,
+            onClick: function () { startLevel(currentLevelIndex + 1); }
+          });
+        }
+        actions.push({
+          label: "Back to levels", primary: isLast, onClick: backToLevels
+        });
+        setPromptActions(actions);
         promptOverlay.hidden = false;
       }
 
@@ -29371,7 +29530,11 @@
           render();
           // Count up to 100, then the existing win prompt follows.
           animateCloseness(fromPct, 100, function () {
-            if (LEVELS_ACTIVE) { showLevelPrompt(true); return; }
+            if (currentLevelIndex !== null) {
+              saveLevelResult(currentLevelIndex, true, state.guesses.length);
+              showLevelPrompt(true);
+              return;
+            }
             showPrompt("Nice one — you found <strong>" +
               w.toUpperCase() + "</strong>!");
           });
@@ -29428,7 +29591,11 @@
           });
           render();
           animateCloseness(fromPct, newPct, function () {
-            if (LEVELS_ACTIVE) { showLevelPrompt(false); return; }
+            if (currentLevelIndex !== null) {
+              saveLevelResult(currentLevelIndex, false);
+              showLevelPrompt(false);
+              return;
+            }
             showPrompt("The word was <strong>" + state.answer.toUpperCase() +
               "</strong>. Try again?");
           });
@@ -29754,15 +29921,34 @@
       var promptOverlay = document.getElementById("promptOverlay");
       var promptText = document.getElementById("promptText");
       var promptSeed = document.getElementById("promptSeed");
-      var promptAgainBtn = document.getElementById("promptAgain");
+      var promptActions = document.getElementById("promptActions");
 
       function seedLabel(seed) {
         return "Puzzle seed " + seed;
       }
 
+      // Rebuild the prompt's buttons. buttons: [{label, primary, onClick}].
+      function setPromptActions(buttons) {
+        promptActions.innerHTML = "";
+        buttons.forEach(function (b) {
+          var el = document.createElement("button");
+          el.type = "button";
+          el.className = "btn" + (b.primary ? " btn-primary" : "");
+          el.textContent = b.label;
+          el.addEventListener("click", b.onClick);
+          promptActions.appendChild(el);
+        });
+      }
+
+      // Free-play prompt (dev only, reached via ?seed= / ?answer=). Levels use
+      // showLevelPrompt instead.
       function showPrompt(html) {
         promptText.innerHTML = html;
         promptSeed.textContent = seedLabel(state.seed);
+        setPromptActions([{
+          label: "Play again", primary: true,
+          onClick: function () { newGame(currentSeed + 1); }
+        }]);
         promptOverlay.hidden = false;
       }
 
@@ -29792,12 +29978,9 @@
         render();
       }
 
-      // "Play again" advances the seed to a fresh puzzle. Wrapped, because
-      // newGame takes an argument and would otherwise receive the MouseEvent.
-      promptAgainBtn.addEventListener("click", function () {
-        if (LEVELS_ACTIVE) { advanceLevel(); return; }
-        newGame(currentSeed + 1);
-      });
+      // The header Back control returns to the level screen, abandoning the
+      // current level without saving a result.
+      backBtn.addEventListener("click", backToLevels);
 
       // ---- Prototype menu ----
       var menuBtn = document.getElementById("menuBtn");
@@ -29826,6 +30009,10 @@
         if (e.target === menuOverlay) closeMenu();
       });
       document.getElementById("menuResetAll").addEventListener("click", resetEverything);
+      document.getElementById("menuResetLevels").addEventListener("click", function () {
+        resetLevelResults();
+        closeMenu();
+      });
 
       // ---- Closeness table (dev tool) ----
       var tableOverlay = document.getElementById("tableOverlay");
@@ -30027,6 +30214,30 @@
             if (!(d1 - d10 >= 10)) return "d=1 - d=10 is " + (d1 - d10) + " (expected >= 10)";
             return true;
           }
+        },
+        {
+          // Phase 4: each level pins a known answer and builds with fixed,
+          // repeatable bounds. boundsAround is seed-independent, so the same
+          // level must yield identical bounds on two builds in a row, with the
+          // answer between them.
+          name: "each level builds the same bounds twice in a row",
+          fn: function () {
+            var words = ["skirt", "drink", "couch"];
+            for (var i = 0; i < words.length; i++) {
+              var a = words[i];
+              if (!RANK.has(a)) return "level word '" + a + "' not in WORDS";
+              var p1 = boundsAround(a, WINDOW_WORDS);
+              var p2 = boundsAround(a, WINDOW_WORDS);
+              if (!p1 || !p2) return "no bounds built for '" + a + "'";
+              if (p1.lower !== p2.lower || p1.upper !== p2.upper) {
+                return "bounds for '" + a + "' not stable across builds";
+              }
+              if (!(p1.lower < a && a < p1.upper)) {
+                return "answer '" + a + "' not between its bounds";
+              }
+            }
+            return true;
+          }
         }
       ];
 
@@ -30079,18 +30290,24 @@
 
         if (QUERY.selftest) { runSelfTests(); return; }
 
-        // Level pack plumbing (Phase 4 replaces this). With ?levels the fixed
-        // sequence plays straight away.
-        if (LEVELS_ACTIVE) {
-          if (QUERY.level && QUERY.level >= 1 && QUERY.level <= LEVEL_WORDS.length) {
-            levelIndex = QUERY.level - 1;
-          }
-          loadLevel();
+        // ?level=N jumps straight into a level.
+        if (QUERY.level && QUERY.level >= 1 && QUERY.level <= LEVEL_COUNT) {
+          startLevel(QUERY.level - 1);
           return;
         }
 
-        // v2 loads straight into a game showing % feedback.
-        newGame(currentSeed);
+        // Dev free-play: any explicit puzzle override loads a single game with
+        // the generic prompt rather than the level screen.
+        if (QUERY.answer || QUERY.lower || QUERY.upper || QUERY.seed !== null) {
+          currentLevelIndex = null;
+          appEl.hidden = false;
+          backBtn.hidden = true;
+          newGame(currentSeed);
+          return;
+        }
+
+        // Default home: the level screen.
+        showLevelScreen();
       })();
     })();
   </script>

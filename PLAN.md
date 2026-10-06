@@ -91,7 +91,15 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
-## [ ] Phase 4 — Levels
+## [x] Phase 4 — Levels
+
+<!-- Done: skirt/drink/couch as Levels 1-3 on fixed seeds [1,2,3]; level screen
+     with three cards showing Not played / Solved in N / Not solved from
+     sandwich-v2-levels; end-of-level prompt Next level + Back to levels (no
+     Play again / Change mode); Back control in header abandons mid-level;
+     Reset level results menu item; ?level=N still opens a level. Self-test:
+     each level builds identical bounds twice (now 11). Reviewer skipped per
+     Lachlan. -->
 
 - Use the first three words of `LEVEL_WORDS` (`skirt`, `drink`, `couch`) as Levels 1–3. Each level uses a fixed seed so its bounds are the same on every play.
 - New home screen: "Levels" with three cards. Each card shows the level number and a status: "Not played", "Solved in N", or "Not solved".
