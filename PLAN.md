@@ -70,24 +70,24 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ## [x] Phase 3 — Thermometer UI (% number only)
 
-<!-- Done: big #closenessValue under the bounds (em dash before guess 1), a
-     newest-first guess list each row word + its %, warmest guess marked
-     .best in --accent. resolveGuess defers prompts behind animateCloseness,
-     a 500ms rAF count-up from the previous value; input blocked for the full
-     think + count-up via state.counting on every gate; reduced-motion jumps
-     instantly. Win reaches 100 then prompts; bounds no longer carry inline %.
-     Self-tests 10. Reviewer PASS (one ⚪ aria-live chattiness nit). -->
+<!-- Done, then REVISED per Lachlan (6 Oct): the big-number + guess-list
+     treatment was reverted back to game.html's design -- the % shows as a
+     small muted .bound-meta inline after each guessed bound word, no large
+     "Closeness" readout, no separate guess list, no count-up animation.
+     state.counting / closenessDisplayed and the animateCloseness tween were
+     removed; resolveGuess is synchronous again. Curve retuned: swapped the
+     log curve for sqrt, pct = 100 - CLOSENESS_K*sqrt(d), CLOSENESS_K=2, so the
+     near region spreads (no 99 wall) but stays warm (skate 87%, skirr 98%) and
+     a full window reads ~23%. rule-5 self-test rewritten for the sqrt curve.
+     Self-tests 11. -->
 
-- Each guess in the guess list shows its % on the right of the row.
-- The latest guess's % also appears large, directly under the bounds, labelled "Closeness". Before the first guess, show "—".
-- When a guess resolves (after the existing 750ms think), the large number counts up from the previous value to the new one over ~500ms. Input stays blocked until it finishes. Reduced motion: it changes instantly.
-- The best % so far is marked in the guess list with the `--accent` colour. Everything else uses `--foreground`.
-- A win shows 100 and the existing win prompt follows.
+- The latest guess's % shows as small muted text inline after each guessed bound word (game.html `.bound-meta` design). No large readout, no separate guess list, no count-up.
+- The % is deterministic and rank-based (`closeness`), capped at 99 for any non-answer; only the exact answer reads 100.
 - No bars, gauges or colour ramps. The number only.
 
 **Done when**
-- Tested by winning, losing, and three guesses that go colder then warmer.
-- Input is blocked for the full think + count-up.
+- Tested by winning, losing, and several guesses that go colder then warmer.
+- Input is blocked for the full 750ms think.
 
 ---
 
@@ -163,3 +163,7 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 - Phase 2 ❓ `CLOSENESS_CURVE` default is 1500 (exponential decay length, in ranks). Tune before Phase 3.
 - Phase 2 ❓ The first ~50 ranks still read 97–99; the spread kicks in past ~100 ranks. Is that near-region flatness acceptable, or lower CLOSENESS_CURVE to spread it more?
 - Phase 2 ❓ The Closeness table renders 13 rows (12 words + the answer row), offsets ±[1,10,50,150,500,1500].
+- Phase 3 ❓ Design reverted to game.html inline `.bound-meta` % (no big number, no guess list, no count-up) per Lachlan.
+- Phase 3 ❓ Curve now sqrt, `CLOSENESS_K=2`: skirr 98, skate 87, full window ~23%. Warm enough / too warm? `CLOSENESS_K` is the single knob (bigger = colder).
+- Phase 3 ❓ Closeness stays rank-based and bounds-independent (same guess = same %). game.html's original % was instead relative to the opening bounds (so it drifted as bounds closed). Keep rank-based, or match game.html's opening-relative behaviour?
+
