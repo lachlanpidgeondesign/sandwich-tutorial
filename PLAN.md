@@ -68,7 +68,15 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
-## [ ] Phase 3 — Thermometer UI (% number only)
+## [x] Phase 3 — Thermometer UI (% number only)
+
+<!-- Done: big #closenessValue under the bounds (em dash before guess 1), a
+     newest-first guess list each row word + its %, warmest guess marked
+     .best in --accent. resolveGuess defers prompts behind animateCloseness,
+     a 500ms rAF count-up from the previous value; input blocked for the full
+     think + count-up via state.counting on every gate; reduced-motion jumps
+     instantly. Win reaches 100 then prompts; bounds no longer carry inline %.
+     Self-tests 10. Reviewer PASS (one ⚪ aria-live chattiness nit). -->
 
 - Each guess in the guess list shows its % on the right of the row.
 - The latest guess's % also appears large, directly under the bounds, labelled "Closeness". Before the first guess, show "—".

@@ -68,7 +68,7 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 32px 8px;
+      padding: 20px 8px;
     }
     .bound {
       font-size: 21px;
@@ -86,20 +86,64 @@
     }
     /* Keep the reserved row height so the wheel never jumps. */
     .bound.far.empty { visibility: hidden; }
-    /* Closeness readout sits inline after a guessed bound word: just text,
-       no border or fill. Sized relative to the word so the far (smaller)
-       bounds scale their readout down too. */
-    .bound-meta {
-      margin-left: 0.5em;
-      font-size: 0.62em;
+
+    /* Closeness readout: the latest guess's % shown large, directly under the
+       bounds. The number is the whole feedback -- no bar, gauge or colour ramp.
+       Height is reserved so the layout never jumps between "\2014" and a value. */
+    .closeness {
+      text-align: center;
+      margin: 2px 0 4px;
+      min-height: 56px;
+    }
+    .closeness-value {
+      font-family: "Literata", Georgia, serif;
+      font-weight: 700;
+      font-size: 40px;
+      line-height: 1.05;
+      color: var(--foreground);
+      font-variant-numeric: tabular-nums;
+    }
+    .closeness-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      margin-top: 2px;
+    }
+
+    /* Guess list: one row per guess, the word on the left and its % on the
+       right. The best % so far is drawn in --accent; every other row in
+       --foreground. Capped height with its own scroll so it never pushes the
+       keyboard off a short screen. */
+    .guess-list {
+      list-style: none;
+      max-width: 360px;
+      margin: 0 auto;
+      max-height: 132px;
+      overflow-y: auto;
+    }
+    .guess-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 5px 10px;
+      font-size: 15px;
+      color: var(--foreground);
+    }
+    .guess-row + .guess-row { border-top: 1px solid var(--border); }
+    .guess-word {
       font-weight: 600;
       letter-spacing: 0.02em;
-      color: var(--muted-foreground);
-      white-space: nowrap;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.15em;
+      text-transform: uppercase;
     }
+    .guess-pct {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .guess-row.best { color: var(--accent); }
 
     .bound.move-top { animation: move-to-top 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
     @keyframes move-to-top {
@@ -484,6 +528,13 @@
       <div class="bound" id="boundBottom">CAN</div>
       <div class="bound far empty" id="boundBottomFar"></div>
     </div>
+
+    <div class="closeness" aria-live="polite">
+      <span class="closeness-value" id="closenessValue">&mdash;</span>
+      <span class="closeness-label">Closeness</span>
+    </div>
+
+    <ol class="guess-list" id="guessList"></ol>
 
     <p class="guesses">Guesses left: <strong id="guessesLeft">10</strong></p>
     <p class="notice" id="notice" role="status" aria-live="polite"></p>
@@ -29154,6 +29205,12 @@
           solved: false,
           gameOver: false,
           thinking: false,
+          // True while the big Closeness number is counting up to a new guess's
+          // value. Input stays blocked for the whole think + count-up.
+          counting: false,
+          // The value currently shown by the big Closeness number (null = the
+          // "—" placeholder before the first guess). The count-up tweens it.
+          closenessDisplayed: null,
           shake: false,
           boundSide: null, // 'top' | 'bottom' just moved
           message: DEFAULT_MSG,
@@ -29202,7 +29259,7 @@
       }
 
       function keyState(letter) {
-        if (state.gameOver || state.thinking) return "dim";
+        if (state.gameOver || state.thinking || state.counting) return "dim";
         // The length cap: the only way the keyboard is stricter than the old
         // sentinel check.
         if (state.typed.length >= state.answer.length) return "dim";
@@ -29256,13 +29313,13 @@
       // reachable rejection. Dimming it would make that message unreachable,
       // since .key.dim sets pointer-events: none.
       function enterState() {
-        if (state.gameOver || state.thinking) return "dim";
+        if (state.gameOver || state.thinking || state.counting) return "dim";
         return state.typed ? "enabled" : "dim";
       }
 
       // ---- Actions ----
       function typeLetter(l) {
-        if (state.gameOver || state.thinking) return;
+        if (state.gameOver || state.thinking || state.counting) return;
         if (keyState(l) !== "enabled") return;
         state.typed += l;
         state.notice = null;
@@ -29270,14 +29327,14 @@
       }
 
       function backspace() {
-        if (state.gameOver || state.thinking || !state.typed) return;
+        if (state.gameOver || state.thinking || state.counting || !state.typed) return;
         state.typed = state.typed.slice(0, -1);
         state.notice = null;
         render();
       }
 
       function submit() {
-        if (state.gameOver || state.thinking) return;
+        if (state.gameOver || state.thinking || state.counting) return;
         var problem = guessProblem();
         if (problem) {
           state.notice = problem;
@@ -29295,6 +29352,10 @@
         state.thinking = false;
         var w = state.typed;
 
+        // Where the big Closeness number starts the count-up from: the value it
+        // is currently showing (0 before the first guess, where it reads "—").
+        var fromPct = state.closenessDisplayed == null ? 0 : state.closenessDisplayed;
+
         // Win first: a correct guess must not consume a guess.
         if (w === state.answer) {
           state.guesses.push({ word: w, direction: "correct" });
@@ -29308,9 +29369,12 @@
             guessesRemaining: state.guessesLeft
           });
           render();
-          if (LEVELS_ACTIVE) { showLevelPrompt(true); return; }
-          showPrompt("Nice one — you found <strong>" +
-            w.toUpperCase() + "</strong>!");
+          // Count up to 100, then the existing win prompt follows.
+          animateCloseness(fromPct, 100, function () {
+            if (LEVELS_ACTIVE) { showLevelPrompt(true); return; }
+            showPrompt("Nice one — you found <strong>" +
+              w.toUpperCase() + "</strong>!");
+          });
           return;
         }
 
@@ -29331,16 +29395,17 @@
           state.boundSide = "bottom";
         }
 
+        var newPct = closeness(w, state.answer);
+
         // Logged after the bound swap, so the fields match what the player is
-        // shown. gaugeGap stays as the series to judge play on -- how fast a
-        // player closes the space -- now measured directly in legal guesses.
+        // shown, now measured in legal guesses left and the closeness %.
         logEvent("guess", {
           word: w,
           direction: direction,
           rankDistance: Math.abs(rankOf(w) - rankOf(state.answer)),
           legalGuessesLeftInWindow:
             wordsBetweenOfLength(state.lower, state.upper, state.answer.length),
-          closeness: closeness(w, state.answer),
+          closeness: newPct,
           guessesRemaining: state.guessesLeft,
           lower: state.lower,
           upper: state.upper
@@ -29362,13 +29427,56 @@
             guessesUsed: state.guesses.length
           });
           render();
-          if (LEVELS_ACTIVE) { showLevelPrompt(false); return; }
-          showPrompt("The word was <strong>" + state.answer.toUpperCase() +
-            "</strong>. Try again?");
+          animateCloseness(fromPct, newPct, function () {
+            if (LEVELS_ACTIVE) { showLevelPrompt(false); return; }
+            showPrompt("The word was <strong>" + state.answer.toUpperCase() +
+              "</strong>. Try again?");
+          });
           return;
         }
 
         render();
+        animateCloseness(fromPct, newPct);
+      }
+
+      // ---- Closeness count-up ---------------------------------------------
+      // Tweens the big number from `from` to `to` over ~500ms, keeping input
+      // blocked (state.counting) for the whole run so a player can't fire a new
+      // guess mid-animation. Reduced motion jumps straight to the value. Works
+      // in both directions -- a colder guess counts down just the same.
+      var REDUCED_MOTION = false;
+      try {
+        REDUCED_MOTION = window.matchMedia &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      } catch (e) { REDUCED_MOTION = false; }
+
+      function animateCloseness(from, to, done) {
+        if (REDUCED_MOTION) {
+          state.counting = false;
+          state.closenessDisplayed = to;
+          renderCloseness();
+          renderKeyboard();
+          if (done) done();
+          return;
+        }
+        state.counting = true;
+        renderKeyboard(); // dim the keyboard immediately
+        var startedAt = null;
+        var DURATION = 500;
+        function frame(now) {
+          if (startedAt === null) startedAt = now;
+          var t = Math.min(1, (now - startedAt) / DURATION);
+          state.closenessDisplayed = Math.round(from + (to - from) * t);
+          renderCloseness();
+          if (t < 1) {
+            requestAnimationFrame(frame);
+          } else {
+            state.counting = false;
+            renderKeyboard();
+            if (done) done();
+          }
+        }
+        requestAnimationFrame(frame);
       }
 
       // ---- Rendering ----
@@ -29381,6 +29489,8 @@
       var guessesLeftEl = document.getElementById("guessesLeft");
       var noticeEl = document.getElementById("notice");
       var keyboardEl = document.getElementById("keyboard");
+      var closenessValueEl = document.getElementById("closenessValue");
+      var guessListEl = document.getElementById("guessList");
 
       var ROWS = [
         "qwertyuiop".split(""),
@@ -29502,25 +29612,10 @@
         return rows;
       }
 
-      // Only the player's own guesses carry a readout. The opening bounds are
-      // given, not guessed, and are explicitly not clues -- annotating them
-      // would mislead.
-      function wasGuessed(word) {
-        for (var i = 0; i < state.guesses.length; i++) {
-          if (state.guesses[i].word === word) return true;
-        }
-        return false;
-      }
-
-      // The % thermometer is v2's only feedback: a guessed bound word carries
-      // its closeness % inline. Direction is already conveyed by which side of
-      // the answer the word sits on.
+      // v2's feedback lives in the big Closeness number and the guess list, not
+      // inline on the bounds. The bound just shows the word.
       function boundHTML(word, side) {
-        var html = word.toUpperCase();
-        if (wasGuessed(word)) {
-          html += '<span class="bound-meta">' + closeness(word, state.answer) + "%</span>";
-        }
-        return html;
+        return word.toUpperCase();
       }
 
       function renderInput() {
@@ -29589,6 +29684,48 @@
         noticeEl.classList.toggle("show", !!state.notice);
       }
 
+      // The big number under the bounds. Shows the currently-displayed value
+      // (which the count-up tween drives), or an em dash before the first
+      // guess. Not touched while a count-up is mid-flight -- animateCloseness
+      // owns closenessValueEl during that window.
+      function renderCloseness() {
+        if (state.closenessDisplayed == null) {
+          closenessValueEl.innerHTML = "&mdash;";
+        } else {
+          closenessValueEl.textContent = state.closenessDisplayed + "%";
+        }
+      }
+
+      // The chronological list of guesses, newest first, each with its own %
+      // on the right. The single warmest guess so far is marked `.best`.
+      function renderGuessList() {
+        guessListEl.innerHTML = "";
+        var n = state.guesses.length;
+        if (!n) return;
+        // Find the warmest guess, so exactly one row gets the accent.
+        var bestPct = -1;
+        var bestIdx = -1;
+        for (var i = 0; i < n; i++) {
+          var p = closeness(state.guesses[i].word, state.answer);
+          if (p > bestPct) { bestPct = p; bestIdx = i; }
+        }
+        for (var j = n - 1; j >= 0; j--) {
+          var g = state.guesses[j];
+          var pct = closeness(g.word, state.answer);
+          var li = document.createElement("li");
+          li.className = "guess-row" + (j === bestIdx ? " best" : "");
+          var wordEl = document.createElement("span");
+          wordEl.className = "guess-word";
+          wordEl.textContent = g.word.toUpperCase();
+          var pctEl = document.createElement("span");
+          pctEl.className = "guess-pct";
+          pctEl.textContent = pct + "%";
+          li.appendChild(wordEl);
+          li.appendChild(pctEl);
+          guessListEl.appendChild(li);
+        }
+      }
+
       function renderKeyboard() {
         var buttons = keyboardEl.querySelectorAll("button");
         buttons.forEach(function (btn) {
@@ -29596,7 +29733,7 @@
           var s;
           if (btn.dataset.action === "enter") s = enterState();
           else if (btn.dataset.action === "back")
-            s = state.gameOver || state.thinking || !state.typed ? "dim" : "enabled";
+            s = state.gameOver || state.thinking || state.counting || !state.typed ? "dim" : "enabled";
           else s = keyState(btn.dataset.letter);
           if (s === "dim") btn.classList.add("dim");
         });
@@ -29607,6 +29744,8 @@
         renderBounds();
         renderInput();
         renderNotice();
+        renderCloseness();
+        renderGuessList();
         renderKeyboard();
         guessesLeftEl.textContent = state.guessesLeft;
       }
