@@ -27,7 +27,11 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
-## [ ] Phase 1 — Dictionary validation
+## [x] Phase 1 — Dictionary validation
+
+<!-- Done: added pure validateGuess(typed,answer,lower,upper) with dict check
+     (RANK) as the last branch after length+bounds; "Not in word list" via the
+     existing notice+shake, no guess spent, no %. Self-tests now 5. Reviewer PASS. -->
 
 - Guesses must be in `WORDS`. Use the existing indexes (e.g. `RANK`), not a new array.
 - A word that isn't in the list shows "Not in word list" using the existing message area and shake. It does not use a guess and does not show a %.

@@ -29089,7 +29089,7 @@
       //
       // So the keyboard and guessProblem() DO disagree, on the dictionary, and
       // that is correct: BZZZZ is typeable between two bounds and is rejected
-      // at Enter with "isn't in the word list". The keyboard is stricter than
+      // at Enter with "Not in word list". The keyboard is stricter than
       // alphabetical viability on length alone (see keyState), because typing
       // past the answer's length carries no information and can only produce a
       // pointless rejection.
@@ -29129,8 +29129,10 @@
       }
 
       // Returns the reason a guess is rejected, or null when it is legal.
-      // All but the first branch are reachable, because the keyboard checks
-      // alphabetical possibility only:
+      // Order of checks is deliberate -- length, then between the bounds, then
+      // the dictionary -- so the message always names the most basic failure
+      // first. All branches are reachable, because the keyboard only checks
+      // alphabetical possibility (never the dictionary):
       //   empty        - no: Enter is dim with nothing typed
       //   wrong length - yes, on a partial word (the cap prevents over-long)
       //   out of bounds- yes, by typing the lower bound exactly. viable() lets
@@ -29140,17 +29142,28 @@
       //                  would mean the keyboard excluding a key because of one
       //                  specific word rather than the range -- the dictionary
       //                  leak in miniature -- and it would read as a bug.
-      function guessProblem() {
-        var t = state.typed;
-        if (!t) return "Type a word to guess.";
-        if (t.length !== state.answer.length) {
-          return "The answer has " + state.answer.length + " letters.";
+      //   not a word   - yes: BZZZZ is typeable between two bounds and is only
+      //                  caught here, against the RANK index of WORDS.
+      //
+      // Pure: no DOM, no closure over `state`, so the self-test can call it
+      // directly. guessProblem() is the thin wrapper the game uses.
+      function validateGuess(typed, answer, lower, upper) {
+        if (!typed) return "Type a word to guess.";
+        if (typed.length !== answer.length) {
+          return "The answer has " + answer.length + " letters.";
         }
-        if (!(state.lower < t && t < state.upper)) {
-          return "Must come between " + state.lower.toUpperCase() +
-            " and " + state.upper.toUpperCase() + ".";
+        if (!(lower < typed && typed < upper)) {
+          return "Must come between " + lower.toUpperCase() +
+            " and " + upper.toUpperCase() + ".";
+        }
+        if (!RANK.has(typed)) {
+          return "Not in word list";
         }
         return null;
+      }
+
+      function guessProblem() {
+        return validateGuess(state.typed, state.answer, state.lower, state.upper);
       }
 
       function guessValid() {
@@ -29591,6 +29604,43 @@
               }
             }
             return true;
+          }
+        },
+        {
+          // Phase 1: dictionary validation. Fixed bounds sport < stone < stuck.
+          name: "valid word between the bounds is accepted",
+          fn: function () {
+            var r = validateGuess("store", "stone", "sport", "stuck");
+            return r === null ? true : "expected accept, got: " + r;
+          }
+        },
+        {
+          name: "non-word between the bounds is rejected as not in the list",
+          fn: function () {
+            if (RANK.has("stqne")) return "'stqne' unexpectedly in WORDS";
+            var r = validateGuess("stqne", "stone", "sport", "stuck");
+            return r === "Not in word list" ? true : "expected 'Not in word list', got: " + r;
+          }
+        },
+        {
+          // A real word that is out of bounds must fail the BOUNDS check, not
+          // the dictionary check -- proving the order length -> bounds -> dict.
+          name: "valid word outside the bounds is rejected with the bounds message",
+          fn: function () {
+            if (!RANK.has("apple")) return "'apple' unexpectedly absent from WORDS";
+            var r = validateGuess("apple", "stone", "sport", "stuck");
+            return r === "Must come between SPORT and STUCK."
+              ? true : "expected bounds message, got: " + r;
+          }
+        },
+        {
+          // A rejected guess must not touch the guess count: validateGuess is
+          // pure, so a non-null result is how submit() knows to bail before
+          // decrementing guessesLeft.
+          name: "a rejected guess reports a problem (so no guess is spent)",
+          fn: function () {
+            var spent = validateGuess("stqne", "stone", "sport", "stuck") !== null;
+            return spent ? true : "rejected guess did not report a problem";
           }
         }
       ];
