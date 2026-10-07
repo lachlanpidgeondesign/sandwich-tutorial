@@ -29305,6 +29305,10 @@
 
           lower: puzzle.lower,
           upper: puzzle.upper,
+          // The opening bounds never move; they are the denominator for the
+          // closeness %, so a guess is scored against the puzzle's own range.
+          startLower: puzzle.lower,
+          startUpper: puzzle.upper,
           prevLower: null,
           prevUpper: null,
           typed: "",
@@ -29502,7 +29506,7 @@
           rankDistance: Math.abs(rankOf(w) - rankOf(state.answer)),
           legalGuessesLeftInWindow:
             wordsBetweenOfLength(state.lower, state.upper, state.answer.length),
-          closeness: closeness(w, state.answer),
+          closeness: closeness(w, state.answer, state.startLower, state.startUpper),
           guessesRemaining: state.guessesLeft,
           lower: state.lower,
           upper: state.upper
@@ -29599,39 +29603,49 @@
       }
 
       // ---- Closeness engine -----------------------------------------------
-      // closeness(guess, answer) -> integer 0..100. The single source of truth
-      // for the % thermometer.
+      // closeness(guess, answer, startLower, startUpper) -> integer 0..100. The
+      // single source of truth for the % thermometer.
       //
-      // It is measured in RANK within the same-length band (RANK_IN_LENGTH),
-      // across the WHOLE word list -- never the current bounds -- so the same
-      // guess always scores the same % for a given answer, however far the
-      // bounds have since closed in. 100 is reserved for the exact answer; any
-      // other word is capped at 99. It is monotonic in rank distance: a guess
-      // nearer the answer never scores lower than one further away.
+      // Definition (Lachlan, 7 Oct): the score is how much of the PUZZLE still
+      // sits between your guess and the secret word.
+      //   distance = valid entries between the guess and the answer
+      //   total    = valid entries between the two opening bounds
+      //   pct      = 100 * (1 - distance / total)
+      // A valid guess is always the same length as the answer, so "valid
+      // entries" are the same-length WORDS, counted with wordsBetweenOfLength.
+      // The denominator is the opening span (startLower..startUpper), fixed for
+      // the puzzle -- it does NOT shrink as the live bounds close in -- so the
+      // same guess always scores the same % within one puzzle. Across puzzles
+      // the % differs, because each puzzle has its own range.
       //
-      // The scale is a square root of rank distance:
-      //   pct = 100 - CLOSENESS_K * sqrt(d)
-      // sqrt is steep right at the top, so the handful of words either side of
-      // the answer read 98, 97, 96... instead of a wall of 99s -- the thing the
-      // old flat exponential did too much of. But it is far gentler than a log
-      // further out, so a near-neighbour a few dozen ranks away still reads a
-      // warm high-80s/90s rather than a cold 50s. CLOSENESS_K is the one knob:
-      // bigger = colder everywhere. At K=2 a full opening window (~1500 ranks)
-      // lands around 20%, a word ~40 ranks off around 87%.
-      var CLOSENESS_K = 2;
-
-      function closeness(guess, answer) {
+      // Properties: monotonic in distance (nearer never scores lower); linear,
+      // so halving the entries left halves the gap to 100; 100 is reserved for
+      // the exact answer and any other word is capped at 99; a guess at or past
+      // an opening bound floors at 1. If no bounds are passed (the pure self
+      // tests), the whole same-length band stands in as the range.
+      function closeness(guess, answer, startLower, startUpper) {
         if (guess === answer) return 100;
         var len = answer.length;
-        var ai = RANK_IN_LENGTH.get(answer);
-        var gi = RANK_IN_LENGTH.get(guess);
-        // A guess of a different length, or not in WORDS, shares no rank line
-        // with the answer: treat it as maximally far -- the 1% floor. (The game
-        // never calls it with such a word -- validation runs first -- but the
-        // pure function must still return a sane value.)
-        if (ai === undefined || gi === undefined || guess.length !== len) return 1;
-        var d = Math.abs(gi - ai);
-        var pct = Math.round(100 - CLOSENESS_K * Math.sqrt(d));
+        var band = BY_LENGTH.get(len);
+        if (RANK_IN_LENGTH.get(answer) === undefined ||
+            RANK_IN_LENGTH.get(guess) === undefined ||
+            guess.length !== len || !band) {
+          // Different length or not in WORDS: shares no line with the answer.
+          return 1;
+        }
+        var lo = guess < answer ? guess : answer;
+        var hi = guess < answer ? answer : guess;
+        var distance = wordsBetweenOfLength(lo, hi, len);
+        // Denominator: entries between the opening bounds, or the whole band
+        // when the caller gives none (self-tests).
+        var total;
+        if (startLower && startUpper) {
+          total = wordsBetweenOfLength(startLower, startUpper, len);
+        } else {
+          total = band.length;
+        }
+        if (total < 1) total = 1;
+        var pct = Math.round(100 * (1 - distance / total));
         if (pct >= 100) pct = 99; // only the exact answer is 100
         if (pct < 1) pct = 1;     // floor: a real guess is never 0%
         return pct;
@@ -29640,10 +29654,10 @@
       // Dev-tool only: rows for the Closeness table, 12 words at increasing rank
       // distance from `answer` (6 below, 6 above) plus the answer row in the
       // middle. Each row is { word, dist (signed rank distance), pct }. Used by
-      // the Prototype menu to inspect the curve while tuning CLOSENESS_K.
+      // the Prototype menu to inspect the curve.
       var CLOSENESS_TABLE_OFFSETS = [1, 10, 50, 150, 500, 1500];
 
-      function closenessTableRows(answer) {
+      function closenessTableRows(answer, startLower, startUpper) {
         var len = answer.length;
         var band = BY_LENGTH.get(len) || [];
         var N = band.length;
@@ -29653,7 +29667,8 @@
         function rowAt(idx, sign) {
           if (idx < 0 || idx > N - 1) return null;
           var w = band[idx];
-          return { word: w, dist: sign * Math.abs(idx - ai), pct: closeness(w, answer) };
+          return { word: w, dist: sign * Math.abs(idx - ai),
+                   pct: closeness(w, answer, startLower, startUpper) };
         }
         var offs = CLOSENESS_TABLE_OFFSETS;
         for (var i = offs.length - 1; i >= 0; i--) {
@@ -29684,7 +29699,7 @@
       function boundHTML(word, side) {
         var html = word.toUpperCase();
         if (wasGuessed(word)) {
-          html += '<span class="bound-meta">' + closeness(word, state.answer) + "%</span>";
+          html += '<span class="bound-meta">' + closeness(word, state.answer, state.startLower, state.startUpper) + "%</span>";
         }
         return html;
       }
@@ -29889,7 +29904,7 @@
         if (!state) return;
         var answer = state.answer;
         tableTitle.textContent = "Closeness table — " + answer.toUpperCase();
-        var rows = closenessTableRows(answer);
+        var rows = closenessTableRows(answer, state.startLower, state.startUpper);
         var html = '<table class="ctable"><thead><tr>' +
           "<th>Word</th><th>Rank &Delta;</th><th>%</th></tr></thead><tbody>";
         for (var i = 0; i < rows.length; i++) {
@@ -30061,27 +30076,42 @@
           }
         },
         {
-          // Phase 2 rule: the sqrt curve spreads the near-answer region so the
-          // closest words are not all crammed at 99, yet a word a full opening
-          // window away still reads clearly cold.
-          name: "the curve spreads the near region (no 99 wall) and stays cold far out",
+          // Current rule: pct = 100 * (1 - distance / total), where distance is
+          // the valid entries between guess and answer and total is the valid
+          // entries between the opening bounds. Must match the formula exactly,
+          // stay monotonic, and use the opening span as the denominator.
+          name: "closeness is the linear fraction of the opening span between guess and answer",
           fn: function () {
             var a = "skirt", band = BY_LENGTH.get(5), ai = RANK_IN_LENGTH.get(a), N = band.length;
-            var sign = (ai + 50 <= N - 1) ? 1 : -1;
-            var d1 = closeness(band[ai + sign * 1], a);
-            var d10 = closeness(band[ai + sign * 10], a);
-            var d50 = closeness(band[ai + sign * 50], a);
-            // No non-answer word may read 99: the top is spread, not a wall.
-            if (d1 > 98) return "d=1 is " + d1 + " (expected <= 98): near region crammed at 99";
-            // The near region moves, not flat.
-            if (!(d1 > d10 && d10 > d50)) {
-              return "near region not strictly spread (" + d1 + "," + d10 + "," + d50 + ")";
+            // A concrete opening span around the answer.
+            var loIdx = Math.max(0, ai - 800), hiIdx = Math.min(N - 1, ai + 800);
+            var sLower = band[loIdx], sUpper = band[hiIdx];
+            var total = wordsBetweenOfLength(sLower, sUpper, 5);
+            if (total < 1) return "degenerate opening span";
+            function expect(word) {
+              var lo = word < a ? word : a, hi = word < a ? a : word;
+              var p = Math.round(100 * (1 - wordsBetweenOfLength(lo, hi, 5) / total));
+              if (p >= 100) p = 99;
+              if (p < 1) p = 1;
+              return p;
             }
-            // A word a full opening window away: cold, but not bottomed out.
-            var farOff = Math.min(1400, Math.max(ai, N - 1 - ai));
-            var farWord = (N - 1 - ai >= ai) ? band[ai + farOff] : band[ai - farOff];
-            var far = closeness(farWord, a);
-            if (!(far >= 8 && far <= 40)) return "far (~" + farOff + ") is " + far + " (expected 8..40)";
+            var samples = [ai + 1, ai + 50, ai + 400, ai - 400, ai - 50];
+            for (var i = 0; i < samples.length; i++) {
+              var idx = samples[i];
+              if (idx < 0 || idx > N - 1) continue;
+              var got = closeness(band[idx], a, sLower, sUpper);
+              if (got !== expect(band[idx])) {
+                return "idx " + idx + " got " + got + " expected " + expect(band[idx]);
+              }
+            }
+            // Monotonic: a nearer guess never scores lower than a further one.
+            var near = closeness(band[Math.min(ai + 10, N - 1)], a, sLower, sUpper);
+            var far = closeness(band[Math.min(ai + 400, N - 1)], a, sLower, sUpper);
+            if (!(near >= far)) return "nearer guess scored lower (" + near + " < " + far + ")";
+            // A guess sitting on the opening bound is cold (well under halfway).
+            if (!(closeness(sUpper, a, sLower, sUpper) < 60)) {
+              return "opening-bound guess not cold";
+            }
             return true;
           }
         },

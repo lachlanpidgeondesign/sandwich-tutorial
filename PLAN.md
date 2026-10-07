@@ -75,11 +75,18 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
      small muted .bound-meta inline after each guessed bound word, no large
      "Closeness" readout, no separate guess list, no count-up animation.
      state.counting / closenessDisplayed and the animateCloseness tween were
-     removed; resolveGuess is synchronous again. Curve retuned: swapped the
-     log curve for sqrt, pct = 100 - CLOSENESS_K*sqrt(d), CLOSENESS_K=2, so the
-     near region spreads (no 99 wall) but stays warm (skate 87%, skirr 98%) and
-     a full window reads ~23%. rule-5 self-test rewritten for the sqrt curve.
-     Self-tests 11. -->
+     removed; resolveGuess is synchronous again. Closeness reworked per Lachlan
+     (7 Oct) to a span fraction instead of a tuned curve:
+     pct = round(100 * (1 - distance / total)) where distance = valid WORDS of
+     the answer's length strictly between the guess and the answer, and total =
+     valid WORDS of that length strictly between the two OPENING bound words
+     (state.startLower / startUpper). closeness now takes the opening bounds:
+     closeness(guess, answer, startLower, startUpper). 100 only for the exact
+     answer, else capped 99, floored 1, monotonic. For skirt (opening span
+     PRINT..TRAIL = 3021 entries): each opening bound reads ~50% (PRINT 48 /
+     TRAIL 52), skate 99, a mid guess ~83, a quarter-span guess ~50. Near the
+     answer still reads 99 because a near guess IS a tiny fraction of the span.
+     rule-5 self-test rewritten for the span-fraction formula. Self-tests 11. -->
 
 - The latest guess's % shows as small muted text inline after each guessed bound word (game.html `.bound-meta` design). No large readout, no separate guess list, no count-up.
 - The % is deterministic and rank-based (`closeness`), capped at 99 for any non-answer; only the exact answer reads 100.
