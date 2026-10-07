@@ -534,6 +534,119 @@
       color: var(--accent);
     }
 
+    /* First-load intro modal (Phase 5) ------------------------------------
+       A centered dialog shown once over the level screen. Layout and copy
+       follow the Figma: a static sandwich preview, a title, a line of body,
+       a dark "Play now" button and an underlined "Play tutorial" link. */
+    .intro-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(26, 34, 48, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      overflow-y: auto;
+      animation: fade 0.2s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    .intro-overlay[hidden] { display: none; }
+    .intro-card {
+      width: 100%;
+      max-width: 400px;
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 12px 60px rgba(0, 0, 0, 0.3);
+      padding: 20px 24px 28px;
+      text-align: center;
+      animation: prompt-in 0.26s cubic-bezier(0, 0, 0.2, 1) both;
+    }
+    .intro-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 12px 22px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .intro-pbound {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--foreground);
+      text-transform: uppercase;
+    }
+    .intro-pbound.far {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted-foreground);
+      opacity: 0.7;
+    }
+    .intro-pmeta {
+      margin-left: 0.5em;
+      font-size: 0.62em;
+      font-weight: 600;
+      color: var(--muted-foreground);
+    }
+    .intro-pslot {
+      width: 100%;
+      max-width: 300px;
+      height: 52px;
+      border: 2.5px solid var(--accent);
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      margin: 2px 0;
+    }
+    .intro-pslot span {
+      width: 16px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--muted-foreground);
+      opacity: 0.6;
+    }
+    .intro-title {
+      font-size: 27px;
+      line-height: 1.15;
+      font-weight: 800;
+      color: var(--foreground);
+      margin-bottom: 12px;
+      text-wrap: balance;
+    }
+    .intro-body {
+      font-size: 16px;
+      line-height: 1.45;
+      color: var(--muted-foreground);
+      margin-bottom: 22px;
+      text-wrap: balance;
+    }
+    .intro-play {
+      background: var(--foreground);
+      border-color: var(--foreground);
+      color: #fff;
+      font-size: 16px;
+      padding: 13px 36px;
+      min-height: 48px;
+    }
+    .intro-tutorial {
+      display: block;
+      width: 100%;
+      margin-top: 18px;
+      background: transparent;
+      border: none;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--foreground);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+      min-height: 44px;
+    }
+
     /* Nothing here is load-bearing motion: every entrance animation uses "both"
        fill, so a near-zero duration settles on its end state. */
     @media (prefers-reduced-motion: reduce) {
@@ -589,9 +702,29 @@
   <div class="menu-overlay" id="menuOverlay" hidden>
     <div class="menu-card" role="menu" aria-label="Prototype">
       <p class="menu-title">Prototype</p>
+      <button class="menu-item" id="menuWhatsNew" role="menuitem" type="button">What's new</button>
       <button class="menu-item" id="menuClosenessTable" role="menuitem" type="button">Closeness table</button>
       <button class="menu-item" id="menuResetLevels" role="menuitem" type="button">Reset level results</button>
+      <button class="menu-item" id="menuResetIntro" role="menuitem" type="button">Reset intro</button>
       <button class="menu-item" id="menuResetAll" role="menuitem" type="button">Reset everything</button>
+    </div>
+  </div>
+
+  <!-- First-load intro modal (Phase 5) -->
+  <div class="intro-overlay" id="introOverlay" hidden>
+    <div class="intro-card" role="dialog" aria-modal="true"
+         aria-labelledby="introTitle" aria-describedby="introBody">
+      <div class="intro-preview" aria-hidden="true">
+        <div class="intro-pbound far">LANCE</div>
+        <div class="intro-pbound">MONEY<span class="intro-pmeta">65.2%</span></div>
+        <div class="intro-pslot"><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="intro-pbound">QUEEN<span class="intro-pmeta">75.2%</span></div>
+        <div class="intro-pbound far">SCOUT</div>
+      </div>
+      <h2 class="intro-title" id="introTitle">Sandwich now has a Thermometer</h2>
+      <p class="intro-body" id="introBody">Every guess now tells you how close you are to the secret word with a % out of 100.</p>
+      <button class="btn intro-play" id="introPlay" type="button">Play now</button>
+      <button class="intro-tutorial" id="introTutorial" type="button">Haven't played Sandwich? Play tutorial</button>
     </div>
   </div>
 
@@ -29929,8 +30062,86 @@
         if (e.target === tableOverlay) closeClosenessTable();
       });
 
+      // ---- First-load intro modal (Phase 5) ----
+      // Shown once over the level screen, gated by sandwich-v2-intro-seen.
+      // Any way of closing it marks it seen; focus is trapped while open and
+      // restored to the level screen on close.
+      var INTRO_KEY = "sandwich-v2-intro-seen";
+      var introOverlay = document.getElementById("introOverlay");
+      var introPlay = document.getElementById("introPlay");
+      var introTutorialBtn = document.getElementById("introTutorial");
+      var introFocusables = [introPlay, introTutorialBtn];
+      var introReturnFocus = null;   // what to refocus when the modal closes
+
+      function hasSeenIntro() {
+        try { return localStorage.getItem(INTRO_KEY) === "1"; }
+        catch (e) { return false; }
+      }
+      function markIntroSeen() {
+        try { localStorage.setItem(INTRO_KEY, "1"); }
+        catch (e) { /* storage unavailable: it just shows again next load */ }
+      }
+      function resetIntro() {
+        try { localStorage.removeItem(INTRO_KEY); }
+        catch (e) { /* nothing to clear */ }
+      }
+
+      function openIntro() {
+        var active = document.activeElement;
+        introReturnFocus = (active && active !== document.body) ? active : null;
+        introOverlay.hidden = false;
+        introPlay.focus();
+      }
+      function closeIntro() {
+        if (introOverlay.hidden) return;
+        introOverlay.hidden = true;
+        markIntroSeen();
+        var target = (introReturnFocus && document.body.contains(introReturnFocus))
+          ? introReturnFocus
+          : levelCardsEl.querySelector(".level-card");
+        if (target && target.focus) target.focus();
+        introReturnFocus = null;
+      }
+
+      introPlay.addEventListener("click", function () {
+        closeIntro();            // "Play now" leaves the player on the levels
+      });
+      introTutorialBtn.addEventListener("click", function () {
+        closeIntro();
+        // Phase 6 adds the tutorial; until then this simply returns to levels.
+        if (typeof startTutorial === "function") startTutorial();
+      });
+
+      // ••• menu: reopen the modal, and a prototype reset for its flag.
+      document.getElementById("menuWhatsNew").addEventListener("click", function () {
+        closeMenu();
+        openIntro();
+      });
+      document.getElementById("menuResetIntro").addEventListener("click", function () {
+        resetIntro();
+        window.location.reload();
+      });
+
       // Physical keyboard support
       document.addEventListener("keydown", function (e) {
+        // The intro modal takes priority: trap Tab inside it, Escape closes it.
+        if (!introOverlay.hidden) {
+          if (e.key === "Escape") { e.preventDefault(); closeIntro(); return; }
+          if (e.key === "Tab") {
+            e.preventDefault();
+            var idx = introFocusables.indexOf(document.activeElement);
+            var next;
+            if (e.shiftKey) {
+              next = idx <= 0 ? introFocusables[introFocusables.length - 1]
+                              : introFocusables[idx - 1];
+            } else {
+              next = idx === introFocusables.length - 1 ? introFocusables[0]
+                                                        : introFocusables[idx + 1];
+            }
+            next.focus();
+          }
+          return;
+        }
         if (!tableOverlay.hidden) {
           if (e.key === "Escape") closeClosenessTable();
           return;
@@ -30138,6 +30349,26 @@
             }
             return true;
           }
+        },
+        {
+          // Phase 5: the first-load gate is a namespaced localStorage flag.
+          // Verify the key is prefixed and that set/clear round-trips through
+          // the helpers, restoring whatever value was there before.
+          name: "intro-seen flag is namespaced and round-trips",
+          fn: function () {
+            if (INTRO_KEY.indexOf("sandwich-v2-") !== 0) return "key not namespaced";
+            var prev = null;
+            try { prev = localStorage.getItem(INTRO_KEY); } catch (e) { return true; }
+            resetIntro();
+            if (hasSeenIntro() !== false) return "resetIntro did not clear the flag";
+            markIntroSeen();
+            if (hasSeenIntro() !== true) return "markIntroSeen did not set the flag";
+            resetIntro();
+            if (hasSeenIntro() !== false) return "flag not cleared again";
+            try { if (prev !== null) localStorage.setItem(INTRO_KEY, prev); }
+            catch (e) { /* leave cleared */ }
+            return true;
+          }
         }
       ];
 
@@ -30208,6 +30439,8 @@
 
         // Default home: the level screen.
         showLevelScreen();
+        // First visit shows the thermometer intro over the level screen.
+        if (!hasSeenIntro()) openIntro();
       })();
     })();
   </script>

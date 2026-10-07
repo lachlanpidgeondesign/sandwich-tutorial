@@ -123,7 +123,23 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
-## [ ] Phase 5 — First-load intro modal
+## [x] Phase 5 — First-load intro modal
+
+<!-- Done: centered dialog over the level screen, gated by
+     sandwich-v2-intro-seen (try/catch, sandwich-v2- prefix). Layout + copy
+     from Modal design.png: static sandwich preview (LANCE / MONEY 65.2% /
+     orange slot with 5 dashes / QUEEN 75.2% / SCOUT), title "Sandwich now has
+     a Thermometer", body "Every guess now tells you how close you are to the
+     secret word with a % out of 100.", dark "Play now" pill, underlined
+     "Haven't played Sandwich? Play tutorial" link. Play now closes + stays on
+     levels; Play tutorial closes and calls startTutorial() if it exists (Phase
+     6), else returns to levels. Any close marks seen. Focus moves to Play now
+     on open, trapped on Tab (Play now <-> tutorial), Escape closes, focus
+     restored to the level card on close. ••• menu: "What's new" reopens it;
+     "Reset intro" clears the flag + reloads. Only shown on the default home
+     path, not on ?level / dev overrides. Self-test: flag namespaced +
+     round-trips (now 12). Verified headless: fresh load shows it, reload
+     doesn't, What's new reopens, Escape closes. -->
 
 - If `sandwich-v2-intro-seen` isn't set, show a modal over the level screen on load. Otherwise go straight to the level screen.
 - If Figma PNGs for the modal are attached, use their layout and copy exactly. Otherwise use this copy:
