@@ -29743,7 +29743,8 @@
       // sits between your guess and the secret word.
       //   distance = valid entries between the guess and the answer
       //   total    = valid entries between the two opening bounds
-      //   pct      = 100 * (1 - distance / total)
+      //   frac     = distance / total        (0 at the answer, 1 at a bound)
+      //   pct      = 100 * (1 - frac^CLOSENESS_GAMMA)
       // A valid guess is always the same length as the answer, so "valid
       // entries" are the same-length WORDS, counted with wordsBetweenOfLength.
       // The denominator is the opening span (startLower..startUpper), fixed for
@@ -29751,11 +29752,16 @@
       // same guess always scores the same % within one puzzle. Across puzzles
       // the % differs, because each puzzle has its own range.
       //
-      // Properties: monotonic in distance (nearer never scores lower); linear,
-      // so halving the entries left halves the gap to 100; 100 is reserved for
-      // the exact answer and any other word is capped at 99; a guess at or past
-      // an opening bound floors at 1. If no bounds are passed (the pure self
-      // tests), the whole same-length band stands in as the range.
+      // CLOSENESS_GAMMA (<1) bends the straight line so the top end is steeper:
+      // it narrows the band that reads 99 (to ~5 words each side on a ~3000-word
+      // puzzle) and at the same time pulls the floor down (an opening bound
+      // reads ~36% instead of 50%). gamma = 1 is the plain linear fraction.
+      //
+      // Properties: monotonic in distance (nearer never scores lower); 100 is
+      // reserved for the exact answer and any other word is capped at 99; a
+      // guess at or past an opening bound floors low. If no bounds are passed
+      // (the pure self tests), the whole same-length band stands in as the range.
+      var CLOSENESS_GAMMA = 0.65;
       function closeness(guess, answer, startLower, startUpper) {
         if (guess === answer) return 100;
         var len = answer.length;
@@ -29778,7 +29784,9 @@
           total = band.length;
         }
         if (total < 1) total = 1;
-        var pct = Math.round(100 * (1 - distance / total));
+        var frac = distance / total;
+        if (frac > 1) frac = 1;   // a guess past an opening bound is fully cold
+        var pct = Math.round(100 * (1 - Math.pow(frac, CLOSENESS_GAMMA)));
         if (pct >= 100) pct = 99; // only the exact answer is 100
         if (pct < 1) pct = 1;     // floor: a real guess is never 0%
         return pct;
@@ -30287,11 +30295,12 @@
           }
         },
         {
-          // Current rule: pct = 100 * (1 - distance / total), where distance is
-          // the valid entries between guess and answer and total is the valid
-          // entries between the opening bounds. Must match the formula exactly,
-          // stay monotonic, and use the opening span as the denominator.
-          name: "closeness is the linear fraction of the opening span between guess and answer",
+          // Current rule: frac = distance / total, pct = 100*(1-frac^GAMMA),
+          // where distance is the valid entries between guess and answer and
+          // total is the valid entries between the opening bounds. Must match
+          // the formula exactly, stay monotonic, read 99 only very near the
+          // answer, and floor an opening bound well under halfway.
+          name: "closeness is the gamma-curved fraction of the opening span",
           fn: function () {
             var a = "skirt", band = BY_LENGTH.get(5), ai = RANK_IN_LENGTH.get(a), N = band.length;
             // A concrete opening span around the answer.
@@ -30301,7 +30310,9 @@
             if (total < 1) return "degenerate opening span";
             function expect(word) {
               var lo = word < a ? word : a, hi = word < a ? a : word;
-              var p = Math.round(100 * (1 - wordsBetweenOfLength(lo, hi, 5) / total));
+              var frac = wordsBetweenOfLength(lo, hi, 5) / total;
+              if (frac > 1) frac = 1;
+              var p = Math.round(100 * (1 - Math.pow(frac, CLOSENESS_GAMMA)));
               if (p >= 100) p = 99;
               if (p < 1) p = 1;
               return p;
@@ -30320,8 +30331,12 @@
             var far = closeness(band[Math.min(ai + 400, N - 1)], a, sLower, sUpper);
             if (!(near >= far)) return "nearer guess scored lower (" + near + " < " + far + ")";
             // A guess sitting on the opening bound is cold (well under halfway).
-            if (!(closeness(sUpper, a, sLower, sUpper) < 60)) {
+            if (!(closeness(sUpper, a, sLower, sUpper) < 50)) {
               return "opening-bound guess not cold";
+            }
+            // The 99 band is tight: a word a few hundred off is clearly under 99.
+            if (!(closeness(band[Math.min(ai + 300, N - 1)], a, sLower, sUpper) < 99)) {
+              return "99 band too wide";
             }
             return true;
           }
