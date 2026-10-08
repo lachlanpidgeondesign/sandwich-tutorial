@@ -706,20 +706,24 @@
       min-height: 132px;
     }
     .coach-step.step-in { animation: step-in 0.26s cubic-bezier(0, 0, 0.2, 1) both; }
+    /* Reserve exactly 3 lines of height so the cue pill below never jumps
+       vertically; shorter copy is centred within that reserved height. The
+       wrapper (not the paragraph) is the flex box, so the lead keeps normal
+       inline flow and its <strong> stays inline. */
+    .coach-lead-box {
+      height: calc(3 * 1.3 * 14px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     .coach-lead {
-      /* Always a 3-line block so the cue pill below never jumps vertically.
-         Shorter copy is centred within the reserved height; the size is tuned
-         so the longest lead still fits in three lines. */
+      /* Size tuned so the longest lead still fits in three lines. */
       font-size: 14px;
       font-weight: 500;
       line-height: 1.3;
       color: var(--foreground);
       text-wrap: balance;
-      height: calc(3 * 1.3em);
       margin: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
     .coach-lead strong { font-weight: 700; }
     .coach-cue {
@@ -782,7 +786,9 @@
     <div class="coach" id="coach" hidden>
       <h1 class="coach-title">How to Play</h1>
       <div class="coach-step" id="coachStep" aria-live="polite">
-        <p class="coach-lead" id="coachLead"></p>
+        <div class="coach-lead-box">
+          <p class="coach-lead" id="coachLead"></p>
+        </div>
         <p class="coach-cue" id="coachCue"></p>
       </div>
     </div>
