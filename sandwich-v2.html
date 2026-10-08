@@ -272,11 +272,6 @@
       flex-direction: column;
       gap: 6px;
     }
-    /* During a tutorial "read, then Next" step the keyboard is inert. */
-    .keyboard.blocked {
-      opacity: 0.45;
-      pointer-events: none;
-    }
     .krow {
       display: flex;
       justify-content: center;
@@ -325,6 +320,14 @@
       cursor: default;
       pointer-events: none;
     }
+    /* Lit letter: the single next key on the tutorial's guided hint path. */
+    .key.lit {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+      font-weight: 700;
+    }
+    .key.lit:hover { background: var(--primary); }
     .key svg { width: 20px; height: 20px; }
 
     /* End-of-game prompt */
@@ -652,73 +655,93 @@
       min-height: 44px;
     }
 
-    /* Tutorial coach card (Phase 6) ---------------------------------------
-       Sits above the keyboard and speaks one step at a time. Reuses the v1
-       tutorial's lead / note / cue-pill vocabulary. While the tutorial is
-       running, the normal subtitle and the guesses-left line are hidden. */
+    /* Tutorial coach (Phase 6) --------------------------------------------
+       A "How to Play" title plus one line of guidance and an orange cue pill,
+       all at the top of the screen above the word wheel. Driven by the
+       TUTORIAL state machine; mirrors the designs in /designs. While the
+       tutorial runs the normal subtitle and the faded far bounds are hidden;
+       the guesses-left line stays visible and counts down. */
     .app.tutorial .subtitle,
-    .app.tutorial #guessesLine { display: none; }
+    .app.tutorial .bound.far { display: none; }
+
+    /* Skip sits top-right where the ••• menu normally is (which is hidden
+       during the tutorial). */
+    .coach-skip {
+      position: fixed;
+      top: 10px;
+      right: 14px;
+      z-index: 40;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--foreground);
+      cursor: pointer;
+      padding: 8px 10px;
+      min-height: 44px;
+    }
+    .coach-skip[hidden] { display: none; }
 
     .coach {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
-      padding: 4px 8px 14px;
+      gap: 12px;
+      padding: 8px 8px 4px;
       text-align: center;
     }
     .coach[hidden] { display: none; }
+    .coach-title {
+      font-family: "Literata", Georgia, serif;
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--foreground);
+    }
     .coach-step {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
-      min-height: 84px;
+      gap: 14px;
+      min-height: 132px;
     }
     .coach-step.step-in { animation: step-in 0.26s cubic-bezier(0, 0, 0.2, 1) both; }
     .coach-lead {
-      font-size: 19px;
-      font-weight: 700;
-      line-height: 1.25;
+      font-size: 22px;
+      font-weight: 500;
+      line-height: 1.3;
       color: var(--foreground);
       text-wrap: balance;
     }
-    .coach-note {
-      font-size: 15px;
-      line-height: 1.4;
-      color: var(--muted-foreground);
-      text-wrap: balance;
-    }
+    .coach-lead strong { font-weight: 700; }
     .coach-cue {
-      margin-top: 2px;
-      padding: 6px 16px;
+      padding: 12px 26px;
       border-radius: 999px;
       background: var(--accent);
       color: #1a2230;
-      font-size: 14px;
+      font-size: 19px;
       font-weight: 700;
-      letter-spacing: 0.02em;
+      line-height: 1.2;
+      text-wrap: balance;
     }
     .coach-key { font-weight: 800; }
-    .coach-actions {
-      display: flex;
-      gap: 8px;
+
+    /* Win step: the keyboard gives way to a single dark "Play now" button. */
+    .coach-footer {
+      display: none;
       justify-content: center;
-      min-height: 0;
+      padding: 8px 8px 16px;
     }
-    .coach-actions:empty { display: none; }
-    .coach-skip {
-      background: none;
-      border: none;
-      font-family: inherit;
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--muted-foreground);
-      cursor: pointer;
-      padding: 8px 12px;
-      min-height: 44px;
+    .app.tutorial-won .keyboard { display: none; }
+    .app.tutorial-won .coach-footer { display: flex; }
+    .coach-playnow {
+      background: var(--foreground);
+      border-color: var(--foreground);
+      color: #fff;
+      font-size: 16px;
+      padding: 13px 40px;
+      min-height: 48px;
     }
-    .coach-skip:hover { color: var(--foreground); }
 
     /* Nothing here is load-bearing motion: every entrance animation uses "both"
        fill, so a near-zero duration settles on its end state. */
@@ -736,6 +759,7 @@
           aria-label="Back to levels" hidden>&#8249;</button>
   <button class="menu-btn" id="menuBtn" type="button"
           aria-haspopup="true" aria-label="Prototype menu">&#8942;</button>
+  <button class="coach-skip" id="coachSkip" type="button" hidden>Skip</button>
 
   <!-- Level select (the home screen) -->
   <section class="levels" id="levelsScreen" hidden>
@@ -744,6 +768,17 @@
   </section>
 
   <div class="app" hidden>
+    <!-- Tutorial coach (Phase 6): a "How to Play" title plus one line of
+         guidance and an orange cue pill, shown at the top during the tutorial
+         and driven by the TUTORIAL state machine. Hidden otherwise. -->
+    <div class="coach" id="coach" hidden>
+      <h1 class="coach-title">How to Play</h1>
+      <div class="coach-step" id="coachStep" aria-live="polite">
+        <p class="coach-lead" id="coachLead"></p>
+        <p class="coach-cue" id="coachCue"></p>
+      </div>
+    </div>
+
     <p class="subtitle" id="subtitle">
       Find the word <em>alphabetically</em> in between
     </p>
@@ -759,12 +794,9 @@
     <p class="guesses" id="guessesLine">Guesses left: <strong id="guessesLeft">10</strong></p>
     <p class="notice" id="notice" role="status" aria-live="polite"></p>
 
-    <!-- Tutorial coach card (Phase 6): one step at a time above the keyboard.
-         Hidden outside the tutorial; driven by the TUTORIAL state machine. -->
-    <div class="coach" id="coach" hidden>
-      <div class="coach-step" id="coachStep" aria-live="polite"></div>
-      <div class="coach-actions" id="coachActions"></div>
-      <button class="coach-skip" id="coachSkip" type="button">Skip tutorial</button>
+    <!-- Win step: the keyboard gives way to this dark "Play now" button. -->
+    <div class="coach-footer" id="coachFooter">
+      <button class="btn coach-playnow" id="coachPlayNow" type="button">Play now</button>
     </div>
 
     <div class="keyboard" id="keyboard"></div>
@@ -29581,6 +29613,13 @@
 
       function keyState(letter) {
         if (state.gameOver || state.thinking) return "dim";
+        // Tutorial guided hint: only the next letter toward the answer is lit;
+        // everything else is dim until the lit path is exhausted.
+        if (TUTORIAL.active) {
+          var fn = tutorialForcedNextChar();
+          if (fn) return letter === fn ? "lit" : "dim";
+          if (tutorialLocked()) return "dim";
+        }
         // The length cap: the only way the keyboard is stricter than the old
         // sentinel check.
         if (state.typed.length >= state.answer.length) return "dim";
@@ -29635,14 +29674,21 @@
       // since .key.dim sets pointer-events: none.
       function enterState() {
         if (state.gameOver || state.thinking) return "dim";
+        // Tutorial: keep Enter dim while a lit letter is still to be tapped,
+        // and until a full-length guess is in the box.
+        if (TUTORIAL.active) {
+          if (tutorialForcedNextChar()) return "dim";
+          if (state.typed.length < state.answer.length) return "dim";
+          return "enabled";
+        }
         return state.typed ? "enabled" : "dim";
       }
 
       // ---- Actions ----
       function typeLetter(l) {
         if (state.gameOver || state.thinking) return;
-        if (TUTORIAL.active && tutorialBlocksInput()) return;
-        if (keyState(l) !== "enabled") return;
+        var ks = keyState(l);
+        if (ks !== "enabled" && ks !== "lit") return;
         state.typed += l;
         state.notice = null;
         render();
@@ -29650,7 +29696,6 @@
 
       function backspace() {
         if (state.gameOver || state.thinking || !state.typed) return;
-        if (TUTORIAL.active && tutorialBlocksInput()) return;
         state.typed = state.typed.slice(0, -1);
         state.notice = null;
         render();
@@ -29658,8 +29703,6 @@
 
       function submit() {
         if (state.gameOver || state.thinking) return;
-        // During a tutorial "read this, then Next" step, the keyboard is inert.
-        if (TUTORIAL.active && tutorialBlocksInput()) return;
         var problem = guessProblem();
         if (problem) {
           state.notice = problem;
@@ -29740,11 +29783,10 @@
           state.upper.toUpperCase();
         state.typed = "";
 
-        // Tutorial: guesses are unlimited and never lost. Keep the counter
-        // pinned, advance the coach to the next step, and skip the loss path.
+        // Tutorial: guesses are unlimited (the counter still counts down, per
+        // the design, but a wrong guess never ends the run). Advance the phase
+        // (which repaints, so the new lit hint key shows) and skip the loss path.
         if (TUTORIAL.active) {
-          state.guessesLeft = MAX_GUESSES;
-          render();
           tutorialOnGuess(w);
           return;
         }
@@ -30017,13 +30059,14 @@
       function renderKeyboard() {
         var buttons = keyboardEl.querySelectorAll("button");
         buttons.forEach(function (btn) {
-          btn.classList.remove("dim");
+          btn.classList.remove("dim", "lit");
           var s;
           if (btn.dataset.action === "enter") s = enterState();
           else if (btn.dataset.action === "back")
             s = state.gameOver || state.thinking || !state.typed ? "dim" : "enabled";
           else s = keyState(btn.dataset.letter);
           if (s === "dim") btn.classList.add("dim");
+          else if (s === "lit") btn.classList.add("lit");
         });
       }
 
@@ -30034,6 +30077,7 @@
         renderNotice();
         renderKeyboard();
         guessesLeftEl.textContent = state.guessesLeft;
+        if (TUTORIAL.active) renderCoach();
       }
 
       // ---- Overlays ----
@@ -30233,72 +30277,126 @@
       });
 
       // ---- Tutorial on the real engine (Phase 6) ----
-      // A guided run of the normal game with a fixed puzzle (answer STONE,
-      // opening bounds SPORT..STUCK). A coach card above the keyboard walks
-      // through one step at a time; the suggestions (STEAM, STORE, STONE) are
-      // nudges, not locks -- any valid guess is accepted. Guesses are unlimited
-      // and nothing is written to the level results. Reachable from the intro
-      // modal's "Play tutorial" and the ••• menu's "How to play".
+      // A guided run of the normal game with a fixed puzzle (answer PLAY,
+      // opening bounds MILK..STAR). A coach at the top of the screen narrates
+      // one line at a time with an orange cue pill, following /designs. The
+      // first two guesses are nudged (RAIN, PARK); after that a lit hint path
+      // spells the answer key by key, but any valid guess is accepted. Guesses
+      // are unlimited (the counter counts down for show but a wrong guess never
+      // ends the run) and nothing is written to the level results. Reachable
+      // from the intro modal's "Play tutorial" and the ••• menu's "How to play".
+      //
+      // Phases: opening -> narrowing -> guided-hint -> guided-final -> solved.
+      // guided-hint lights the path "pl" then opens the keyboard ("the rest is
+      // on you"); if the player then guesses the answer we skip guided-final.
       var TUTORIAL = {
         active: false,
-        done: false,
-        step: 0,
-        ANSWER: "stone",
-        LOWER: "sport",
-        UPPER: "stuck"
-      };
-
-      // Each step is { lead, note?, cue?, action }. action "next" shows a Next
-      // button and blocks the keyboard; "guess" waits for the player to submit.
-      var TUTORIAL_STEPS = [
-        {
-          lead: "The hidden word sits alphabetically between these two.",
-          note: "SPORT comes before it, STUCK comes after \u2014 neither is a clue.",
-          action: "next"
-        },
-        {
-          lead: "Make a guess that fits between them.",
-          note: "Any real five-letter word in range counts. We\u2019ll start you off.",
-          cue: 'Try <span class="coach-key">STEAM</span>',
-          action: "guess"
-        },
-        {
-          lead: "Your guess becomes a new edge.",
-          note: "The % is how close it was \u2014 the higher the number, the nearer the secret word.",
-          action: "next"
-        },
-        {
-          lead: "Now close in from the other side.",
-          cue: 'Try <span class="coach-key">STORE</span>',
-          action: "guess"
-        },
-        {
-          lead: "Warmer! Read the edges and the % together.",
-          note: "Keep guessing until you land on it.",
-          cue: 'Try <span class="coach-key">STONE</span>',
-          action: "guess"
-        }
-      ];
-      var TUTORIAL_WIN_STEP = {
-        lead: "That\u2019s the game.",
-        note: "Two edges, a %, and your guesses to close the gap.",
-        action: "finish"
+        phase: "opening",
+        wrongGuesses: 0,
+        ANSWER: "play",
+        LOWER: "milk",
+        UPPER: "star",
+        // Details of the most recent guess, for the swap-explanation line.
+        lastWord: null,
+        lastDisplaced: null,
+        lastBefore: false
       };
 
       var coachEl = document.getElementById("coach");
       var coachStepEl = document.getElementById("coachStep");
-      var coachActionsEl = document.getElementById("coachActions");
-      var lastCoachHtml = null;
+      var coachLeadEl = document.getElementById("coachLead");
+      var coachCueEl = document.getElementById("coachCue");
+      var coachSkipBtn = document.getElementById("coachSkip");
+      var lastCoachKey = null;
 
-      function currentCoachStep() {
-        return TUTORIAL.done ? TUTORIAL_WIN_STEP : TUTORIAL_STEPS[TUTORIAL.step];
+      // The lit hint path. During guided-hint the player is walked through "pl";
+      // during guided-final through the whole answer. tutorialForcedNextChar
+      // returns the next letter to light, or null once the path is complete.
+      function tutorialTarget(phase) {
+        var p = phase || TUTORIAL.phase;
+        if (p === "guided-hint") return "pl";
+        if (p === "guided-final") return TUTORIAL.ANSWER;
+        return null;
+      }
+      function tutorialForcedNextChar(phase, typed) {
+        var t = tutorialTarget(phase);
+        if (!t) return null;
+        var typ = typed === undefined ? state.typed : typed;
+        if (typ.length < t.length && t.indexOf(typ) === 0) {
+          return t.charAt(typ.length);
+        }
+        return null;
+      }
+      // Once the answer is fully typed on the guided-final path, freeze the keys
+      // so the only move left is Enter.
+      function tutorialLocked() {
+        return tutorialTarget() === TUTORIAL.ANSWER && state.typed === TUTORIAL.ANSWER;
       }
 
-      // The keyboard is inert on any step that isn't waiting for a guess.
-      function tutorialBlocksInput() {
-        if (TUTORIAL.done) return true;
-        var s = TUTORIAL_STEPS[TUTORIAL.step];
-        return !s || s.action !== "guess";
+      function titleCase(w) {
+        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      }
+
+      // The swap-explanation sentence, built from the last guess. withPct adds
+      // the "The % is how close your guess was." tail shown while the hint path
+      // is still lit.
+      function tutorialSwapLead(withPct) {
+        var W = titleCase(TUTORIAL.lastWord);
+        var D = titleCase(TUTORIAL.lastDisplaced);
+        var dir = TUTORIAL.lastBefore ? "before" : "after";
+        var s = "<strong>" + W + "</strong> comes " + dir +
+          " the secret word, so it takes <strong>" + D +
+          "\u2019s</strong> place.";
+        if (withPct) s += " The <strong>%</strong> is how close your guess was.";
+        return s;
+      }
+
+      // Lead + cue for the current phase (and typed length, which flips the
+      // guided-hint copy from the hint to "the rest is on you").
+      function tutorialCoachContent() {
+        var phase = TUTORIAL.phase;
+        var hinting = !!tutorialForcedNextChar();
+        if (phase === "solved") {
+          return { lead: "You found the secret word!", cue: "That\u2019s the game." };
+        }
+        if (phase === "opening") {
+          return {
+            lead: "Guess the secret word, hidden <strong>alphabetically</strong> between the two words",
+            cue: "Try guessing Rain"
+          };
+        }
+        if (phase === "narrowing") {
+          return { lead: tutorialSwapLead(true), cue: "Try guessing Park" };
+        }
+        if (phase === "guided-hint") {
+          return {
+            lead: tutorialSwapLead(hinting),
+            cue: hinting ? "Here\u2019s a hint, follow the lit keys" : "The rest is on you"
+          };
+        }
+        if (phase === "guided-final") {
+          return {
+            lead: "Not the answer, but not wasted. It became the <strong>new edge</strong>, and the <strong>gap shrank</strong> again.",
+            cue: "Follow the lit keys home"
+          };
+        }
+        return { lead: "", cue: "" };
+      }
+
+      function renderCoach() {
+        var c = tutorialCoachContent();
+        var solved = TUTORIAL.phase === "solved";
+        // Only replay the entrance animation when the words actually change.
+        var key = c.lead + "||" + c.cue;
+        if (key !== lastCoachKey) {
+          lastCoachKey = key;
+          coachLeadEl.innerHTML = c.lead;
+          coachCueEl.innerHTML = c.cue;
+          coachStepEl.classList.remove("step-in");
+          void coachStepEl.offsetWidth; // restart the entrance animation
+          coachStepEl.classList.add("step-in");
+        }
+        appEl.classList.toggle("tutorial-won", solved);
       }
 
       // Build the fixed tutorial puzzle by borrowing the level-forcing path:
@@ -30315,53 +30413,29 @@
         forcedLevelAnswer = savedForced;
       }
 
-      function renderCoach() {
-        var s = currentCoachStep();
-        if (!s) return;
-        var html = '<p class="coach-lead">' + s.lead + "</p>";
-        if (s.note) html += '<p class="coach-note">' + s.note + "</p>";
-        if (s.cue) html += '<p class="coach-cue">' + s.cue + "</p>";
-        if (html !== lastCoachHtml) {
-          lastCoachHtml = html;
-          coachStepEl.innerHTML = html;
-          coachStepEl.classList.remove("step-in");
-          void coachStepEl.offsetWidth; // restart the entrance animation
-          coachStepEl.classList.add("step-in");
-        }
-        coachActionsEl.innerHTML = "";
-        if (s.action === "next" || s.action === "finish") {
-          var btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "btn btn-primary";
-          btn.textContent = s.action === "finish" ? "Back to levels" : "Next";
-          btn.addEventListener("click",
-            s.action === "finish" ? endTutorial : advanceTutorial);
-          coachActionsEl.appendChild(btn);
-        }
-        // Dim the keyboard whenever it isn't the player's turn to type.
-        keyboardEl.classList.toggle("blocked", tutorialBlocksInput());
-      }
+      // Called after a wrong guess resolves. The engine has already swapped the
+      // bound; record which word was displaced and advance the phase.
+      function tutorialOnGuess(w) {
+        TUTORIAL.wrongGuesses += 1;
+        TUTORIAL.lastWord = w;
+        TUTORIAL.lastBefore = w < TUTORIAL.ANSWER;
+        // The displaced bound is the previous one on the side the guess took.
+        TUTORIAL.lastDisplaced = TUTORIAL.lastBefore ? state.prevLower : state.prevUpper;
 
-      // Next button: step through the read-only "next" steps.
-      function advanceTutorial() {
-        if (TUTORIAL.done) return;
-        TUTORIAL.step += 1;
-        renderCoach();
-      }
-
-      // Called after a wrong guess resolves (unlimited, never a loss).
-      function tutorialOnGuess() {
-        if (TUTORIAL.step <= 1) {
-          TUTORIAL.step = 2;        // first guess -> explain the edge + %
-        } else if (TUTORIAL.step === 3) {
-          TUTORIAL.step = 4;        // second guess -> keep going to the answer
+        if (TUTORIAL.phase === "opening" || TUTORIAL.phase === "narrowing") {
+          // Second wrong guess opens the lit hint path; the first just narrows.
+          TUTORIAL.phase = TUTORIAL.wrongGuesses >= 2 ? "guided-hint" : "narrowing";
+        } else if (TUTORIAL.phase === "guided-hint") {
+          // They typed past the hint and guessed something other than the
+          // answer: it becomes the new edge and the final lit path appears.
+          TUTORIAL.phase = "guided-final";
         }
-        // step 4 holds: the player guesses until they find STONE.
-        renderCoach();
+        // guided-final holds until the answer is found.
+        render();   // repaint with the new phase so the lit hint key shows
       }
 
       function tutorialOnWin() {
-        TUTORIAL.done = true;
+        TUTORIAL.phase = "solved";
         renderCoach();
       }
 
@@ -30371,13 +30445,17 @@
         closeIntro();
         currentLevelIndex = null;    // tutorial never writes a level result
         TUTORIAL.active = true;
-        TUTORIAL.done = false;
-        TUTORIAL.step = 0;
-        lastCoachHtml = null;
+        TUTORIAL.phase = "opening";
+        TUTORIAL.wrongGuesses = 0;
+        TUTORIAL.lastWord = null;
+        lastCoachKey = null;
         levelsScreen.hidden = true;
         appEl.hidden = false;
         appEl.classList.add("tutorial");
-        backBtn.hidden = true;       // the coach card has its own Skip
+        appEl.classList.remove("tutorial-won");
+        backBtn.hidden = true;       // the coach has its own Skip
+        menuBtn.hidden = true;       // Skip takes the top-right slot
+        coachSkipBtn.hidden = false;
         coachEl.hidden = false;
         buildTutorialPuzzle();
         renderCoach();
@@ -30385,15 +30463,16 @@
 
       function endTutorial() {
         TUTORIAL.active = false;
-        TUTORIAL.done = false;
         coachEl.hidden = true;
-        appEl.classList.remove("tutorial");
-        keyboardEl.classList.remove("blocked");
-        lastCoachHtml = null;
+        coachSkipBtn.hidden = true;
+        menuBtn.hidden = false;
+        appEl.classList.remove("tutorial", "tutorial-won");
+        lastCoachKey = null;
         showLevelScreen();
       }
 
-      document.getElementById("coachSkip").addEventListener("click", endTutorial);
+      coachSkipBtn.addEventListener("click", endTutorial);
+      document.getElementById("coachPlayNow").addEventListener("click", endTutorial);
       document.getElementById("menuHowToPlay").addEventListener("click", function () {
         closeMenu();
         startTutorial();
@@ -30660,10 +30739,13 @@
           // Phase 6: the tutorial's fixed puzzle must be well-formed. The five
           // scripted words are real, in byte order, STONE is placeable as an
           // answer, and the scripted suggestions are legal guesses between the
+          // Phase 6: the tutorial's fixed puzzle must be well-formed. The six
+          // scripted words are real, in byte order, PLAY is placeable as an
+          // answer, and the scripted nudges are legal guesses between the
           // opening bounds while an out-of-range word is rejected.
           name: "tutorial puzzle words are valid, ordered and playable",
           fn: function () {
-            var seq = [TUTORIAL.LOWER, "steam", TUTORIAL.ANSWER, "store", TUTORIAL.UPPER];
+            var seq = [TUTORIAL.LOWER, "park", TUTORIAL.ANSWER, "plot", "rain", TUTORIAL.UPPER];
             for (var i = 0; i < seq.length; i++) {
               if (!RANK.has(seq[i])) return "'" + seq[i] + "' not in WORDS";
             }
@@ -30675,37 +30757,29 @@
             var lo = TUTORIAL.LOWER, up = TUTORIAL.UPPER, ans = TUTORIAL.ANSWER;
             if (!(lo < ans && ans < up)) return "answer not between the opening bounds";
             // The scripted nudges and the answer are all accepted here.
-            if (validateGuess("steam", ans, lo, up) !== null) return "STEAM not accepted";
-            if (validateGuess("store", ans, lo, up) !== null) return "STORE not accepted";
-            if (validateGuess(ans, ans, lo, up) !== null) return "STONE (answer) not accepted";
+            if (validateGuess("rain", ans, lo, up) !== null) return "RAIN not accepted";
+            if (validateGuess("park", ans, lo, up) !== null) return "PARK not accepted";
+            if (validateGuess("plot", ans, lo, up) !== null) return "PLOT not accepted";
+            if (validateGuess(ans, ans, lo, up) !== null) return "PLAY (answer) not accepted";
             // A real word outside the range is still rejected (no free pass).
-            if (validateGuess("aorta", ans, lo, up) === null) return "out-of-range guess accepted";
+            if (validateGuess("abba", ans, lo, up) === null) return "out-of-range guess accepted";
             return true;
           }
         },
         {
-          // Phase 6: the coach gates the keyboard. Reading steps ("next") and
-          // the win screen block input; guess steps open it. Mutates and then
-          // restores the live TUTORIAL step so the running app is unaffected.
-          name: "tutorial step gating blocks reading steps and opens guess steps",
+          // Phase 6: the guided hint lights the next letter toward the answer.
+          // In guided-hint the path is "pl" (then the keyboard opens); in
+          // guided-final it spells the whole answer. Pure over (phase, typed).
+          name: "tutorial lit path lights the next letter toward the answer",
           fn: function () {
-            var savedStep = TUTORIAL.step, savedDone = TUTORIAL.done;
-            try {
-              var expect = { 0: true, 1: false, 2: true, 3: false, 4: false };
-              TUTORIAL.done = false;
-              for (var k in expect) {
-                TUTORIAL.step = Number(k);
-                if (tutorialBlocksInput() !== expect[k]) {
-                  return "step " + k + " gating wrong";
-                }
-              }
-              TUTORIAL.done = true;
-              if (tutorialBlocksInput() !== true) return "win screen did not block input";
-              return true;
-            } finally {
-              TUTORIAL.step = savedStep;
-              TUTORIAL.done = savedDone;
-            }
+            if (tutorialForcedNextChar("guided-hint", "") !== "p") return "hint should light P first";
+            if (tutorialForcedNextChar("guided-hint", "p") !== "l") return "hint should light L next";
+            if (tutorialForcedNextChar("guided-hint", "pl") !== null) return "hint should open after PL";
+            if (tutorialForcedNextChar("guided-final", "") !== "p") return "final should light P";
+            if (tutorialForcedNextChar("guided-final", "pla") !== "y") return "final should light Y last";
+            if (tutorialForcedNextChar("guided-final", "play") !== null) return "final should end after PLAY";
+            if (tutorialForcedNextChar("opening", "") !== null) return "opening should light nothing";
+            return true;
           }
         }
       ];

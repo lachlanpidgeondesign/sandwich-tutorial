@@ -163,28 +163,38 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ## [x] Phase 6 — Tutorial on the real engine · CHECKPOINT
 
-<!-- Done: tutorial runs the REAL engine with a fixed puzzle (answer STONE,
-     opening bounds SPORT..STUCK). Word-order confirmed in WORDS and byte order:
-     sport < steam < stone < store < stuck (all present, none substituted).
-     A coach card (#coach) sits above the keyboard, reusing the v1 lead/note/
-     cue-pill vocabulary, one step at a time:
-       0 intro (Next)  1 "Try STEAM" (guess)  2 explain edge + % (Next)
-       3 "Try STORE" (guess)  4 "Try STONE", keep guessing (guess)  win "finish".
-     Suggestions are nudges only -- any valid in-range guess is accepted (the
-     engine's own validateGuess runs). Reading steps + the win screen dim and
-     block the keyboard (keyboard.blocked + tutorialBlocksInput); guess steps
-     open it. Guesses are UNLIMITED (guessesLeft re-pinned each resolve, loss
-     path skipped) and the guesses-left line + subtitle are hidden
-     (.app.tutorial). Skip ("Skip tutorial") shows on every step -> level
-     screen; win -> "Back to levels". currentLevelIndex is null throughout so
-     saveLevelResult is never called -- nothing lands in sandwich-v2-levels.
-     Entry points: intro modal "Play tutorial" and ••• "How to play".
-     Deviation from the brief: step 5 adds a "Try STONE" cue (the answer) so the
-     run is completable by following the suggestions, as the Done-when requires.
-     Self-tests 14 (tutorial words valid+ordered+playable; step gating).
-     Verified headless end-to-end: scripted run STEAM->STORE->STONE wins and
-     shows "That's the game."; ignoring the nudge (STRUM) still advances; Skip
-     at step 0 and mid-run both return to levels with the levels key still null.
+<!-- Done (reworked to follow /designs/ TUTORIAL 1-6.png): tutorial runs the
+     REAL engine with a fixed puzzle (answer PLAY, opening bounds MILK..STAR).
+     Word order confirmed in WORDS/byte order: milk < park < play < plot <
+     rain < star (all present, 4-letter band, none substituted).
+     A "How to Play" coach (#coach) sits ABOVE the wheel: serif title, a lead
+     line (bold key phrases) and an orange cue pill, repainted per phase with a
+     fade. Phases: opening -> narrowing -> guided-hint -> guided-final ->
+     solved. Scripted nudges RAIN then PARK; %s computed by the engine
+     (RAIN 86.3, PARK 90.9, PLOT 99.4 against the MILK..STAR span). After PARK
+     the coach gives a lit-key hint: the keyboard lights the next letter toward
+     the answer (P, then L) via keyState "lit"/renderKeyboard .key.lit; once
+     "PL" is typed the lock releases ("the rest is on you") and any valid word
+     is accepted. Per Lachlan: guessing PLAY straight after the PARK step skips
+     the PLOT step. If instead the player keeps guessing (e.g. PLOT), the
+     guided-final phase lights the full answer path to PLAY.
+     Design note: TUTORIAL 5.png draws PLOT as the top bound, but PLOT > PLAY so
+     the engine correctly places it as the UPPER bound -- PLOT is illustrative,
+     not hardcoded. Far bounds are hidden (.app.tutorial .bound.far) and the
+     subtitle is hidden; the guesses counter stays VISIBLE and decrements
+     naturally (10 -> 9 -> 8 ...). Guesses are UNLIMITED (loss path skipped).
+     Win shows "You found the secret word! / That's the game." and a dark
+     "Play now" button (.app.tutorial-won #coachFooter) -> level screen.
+     A fixed "Skip" button (top-right, replacing menuBtn during the tutorial)
+     exits to the level screen on every phase. currentLevelIndex is null
+     throughout so saveLevelResult never runs -- nothing lands in
+     sandwich-v2-levels. Entry points: intro modal "Play tutorial" and •••
+     "How to play". Self-tests 14 (tutorial words valid+ordered+playable;
+     tutorialForcedNextChar lights the next letter toward the answer).
+     Verified headless end-to-end: SELFTEST PASS (14); follow-nudges path
+     RAIN->PARK->(lit P,L)->PLAY wins and skips PLOT; ignore path ...->PLOT->
+     guided-final lit path->PLAY wins; Skip mid-run returns to levels with the
+     levels key still null; "Play now" restores menuBtn and the level screen.
      CHECKPOINT: stop for Lachlan to hand-test on a phone. -->
 
 - Build the tutorial inside `sandwich-v2.html` using the real game engine, not a static mock. Use `sandwich-tutorial.html` as a reference for tone and step order, adapted to explain the %.
