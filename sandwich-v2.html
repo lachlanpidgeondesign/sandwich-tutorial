@@ -59,12 +59,27 @@
       gap: 20px;
       min-height: 100dvh;
     }
+    .levels-head {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .levels-logo { display: block; margin-bottom: 4px; }
     .levels-title {
       font-family: "Literata", Georgia, serif;
-      font-size: 30px;
+      font-size: 34px;
       font-weight: 700;
       text-align: center;
       color: var(--foreground);
+      margin: 0;
+    }
+    .levels-progress {
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      color: var(--muted-foreground);
+      margin: 0;
     }
     .level-cards {
       display: flex;
@@ -767,7 +782,22 @@
 
   <!-- Level select (the home screen) -->
   <section class="levels" id="levelsScreen" hidden>
-    <h1 class="levels-title">Levels</h1>
+    <header class="levels-head">
+      <svg class="levels-logo" viewBox="0 0 64 64" width="62" height="62" aria-hidden="true" focusable="false">
+        <!-- top bun -->
+        <path d="M6 29 C6 16 18 9 32 9 C46 9 58 16 58 29 C58 30.5 56.8 31.5 55.3 31.5 L8.7 31.5 C7.2 31.5 6 30.5 6 29 Z" fill="var(--accent)"/>
+        <!-- sesame seeds -->
+        <circle cx="23" cy="20" r="1.5" fill="#fff"/>
+        <circle cx="32" cy="16.5" r="1.5" fill="#fff"/>
+        <circle cx="41" cy="20" r="1.5" fill="#fff"/>
+        <!-- filling -->
+        <rect x="8" y="34" width="48" height="7" rx="3.5" fill="#f3cd82"/>
+        <!-- bottom bun -->
+        <path d="M8.7 43.5 L55.3 43.5 C56.8 43.5 58 44.5 58 46 C58 52.5 47 56.5 32 56.5 C17 56.5 6 52.5 6 46 C6 44.5 7.2 43.5 8.7 43.5 Z" fill="#cf8c2c"/>
+      </svg>
+      <h1 class="levels-title">Sandwich</h1>
+      <p class="levels-progress" id="levelsProgress">0 of 3 levels complete</p>
+    </header>
     <div class="level-cards" id="levelCards"></div>
   </section>
 
@@ -29464,9 +29494,11 @@
 
       function renderLevelCards() {
         levelCardsEl.innerHTML = "";
+        var solvedCount = 0;
         for (var i = 0; i < LEVEL_COUNT; i++) {
           (function (idx) {
             var st = levelStatus(idx);
+            if (st.solved) solvedCount++;
             var card = document.createElement("button");
             card.type = "button";
             card.className = "level-card" + (st.solved ? " solved" : "");
@@ -29482,6 +29514,10 @@
             card.addEventListener("click", function () { startLevel(idx); });
             levelCardsEl.appendChild(card);
           })(i);
+        }
+        var progressEl = document.getElementById("levelsProgress");
+        if (progressEl) {
+          progressEl.textContent = solvedCount + " of " + LEVEL_COUNT + " levels complete";
         }
       }
 
@@ -30764,8 +30800,9 @@
 
         // Default home: the level screen.
         showLevelScreen();
-        // First visit shows the thermometer intro over the level screen.
-        if (!hasSeenIntro()) openIntro();
+        // The thermometer intro shows on every fresh page load (the prototype
+        // is reached by navigating in, so each load is a "first" visit).
+        openIntro();
       })();
     })();
   </script>
