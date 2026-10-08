@@ -76,19 +76,21 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
      "Closeness" readout, no separate guess list, no count-up animation.
      state.counting / closenessDisplayed and the animateCloseness tween were
      removed; resolveGuess is synchronous again. Closeness reworked per Lachlan
-     (7 Oct) to a span fraction instead of a tuned curve:
-     frac = distance / total, pct = round(100 * (1 - frac^CLOSENESS_GAMMA)),
-     where distance = valid WORDS of the answer's length strictly between the
-     guess and the answer, and total = valid WORDS of that length strictly
-     between the two OPENING bound words (state.startLower / startUpper).
-     closeness now takes the opening bounds:
-     closeness(guess, answer, startLower, startUpper). 100 only for the exact
-     answer, else capped 99, floored 1, monotonic. CLOSENESS_GAMMA = 0.65 bends
-     the line so the 99 band is ~5 words each side and the floor drops: for
-     skirt (opening span PUFFS..TRILD ~3021 entries) an opening bound reads
-     ~37%, d=50 -> 93, d=150 -> 86, d=500 -> 69, d=1500 -> 37; 99 only within
-     ~5 words. self-test rewritten for the gamma curve (checks the formula, a
-     tight 99 band and a sub-50% opening bound). Self-tests 12. -->
+     (7-8 Oct) to a linear span fraction shown to ONE decimal place:
+     frac = distance / total, pct = round(100 * (1 - frac), 1dp), where
+     distance = valid WORDS of the answer's length strictly between the guess
+     and the answer, and total = valid WORDS of that length strictly between the
+     two OPENING bound words (state.startLower / startUpper). closeness takes
+     the opening bounds: closeness(guess, answer, startLower, startUpper), and
+     fmtCloseness() renders it (100 flat, else one decimal). 100 only for the
+     exact answer, else capped 99.9, floored 0.1, monotonic. The decimal is the
+     point: the span is ~3000 words so one word is ~0.03%, which collapsed to a
+     flat 99 as an integer; the decimal gives the near region texture. For
+     skirt (opening span PUFFS..TRILD ~3021 entries): opening bound ~50.4%,
+     d=50 -> 98.4, d=150 -> 95.1, d=500 -> 83.5; near the answer d=1 -> 99.9,
+     d=10 -> 99.7. Matches the Figma, which shows decimals (65.2% / 75.2%).
+     self-test checks the linear+decimal formula, a decimal-bearing near region
+     and a ~halfway opening bound. Self-tests 12. -->
 
 - The latest guess's % shows as small muted text inline after each guessed bound word (game.html `.bound-meta` design). No large readout, no separate guess list, no count-up.
 - The % is deterministic and rank-based (`closeness`), capped at 99 for any non-answer; only the exact answer reads 100.
