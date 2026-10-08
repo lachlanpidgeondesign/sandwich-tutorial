@@ -218,6 +218,33 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
+## [x] Phase 7 — % clarity + game rename
+
+<!-- Done: each guessed bound's % now leads with a directional chevron
+     (.bound-arrow: down on a lower bound, up on an upper bound) so the arrow
+     points toward the hidden word. Intro modal and How to Play copy reworded to
+     explain the % with a worked example (QUEEN warmer than MONEY, 100% = the
+     answer). Player-facing "level" copy renamed to "game": level cards
+     ("Game N"), progress line ("X of 3 games complete"), the end-of-game prompt
+     ("Game N solved", "Game N of M", "Next game", "Back to games") and the
+     back-button aria-label. Internal names kept (LEVEL_WORDS, .level-card,
+     #levelsScreen, ?level=, LEVELS_KEY). Em dashes removed from UI copy (win
+     "Nice one! You found WORD.", losses "Out of guesses. ..."); the dev-only
+     selftest console.error dash is left. Self-tests unchanged at 14. -->
+
+- Add a directional arrow to each guessed bound's %, pointing toward the answer.
+- Reword the intro and How to Play % explainers with a worked warmer/colder example.
+- Rename player-facing "level" copy to "game"; keep internal identifiers and the storage key.
+- Remove em dashes from UI copy.
+
+**Done when**
+- Lower bounds show a down arrow, upper bounds an up arrow, each before the %.
+- Both modals explain the % with the warmer/colder example.
+- No player-facing copy says "level"; no UI copy uses an em dash.
+- `?selftest` shows PASS and `game.html` / `sandwich-tutorial.html` are unchanged.
+
+---
+
 ## Decisions to confirm
 
 - Phase 0 ❓ The ••• / Prototype menu cards use hardcoded `#fff`/rgba rather than `:root` tokens (same as game.html's overlays). OK to keep, or tokenise?

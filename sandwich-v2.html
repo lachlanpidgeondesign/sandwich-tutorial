@@ -196,8 +196,16 @@
       white-space: nowrap;
       display: inline-flex;
       align-items: center;
-      gap: 0.15em;
+      gap: 0.2em;
     }
+    /* Arrow next to the % points toward the hidden word: down from the lower
+       bound, up from the upper bound, so the % reads directionally. */
+    .bound-arrow {
+      width: 0.95em;
+      height: 0.95em;
+      flex: none;
+    }
+    .bound-arrow.up { transform: rotate(180deg); }
 
     .bound.move-top { animation: move-to-top 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
     @keyframes move-to-top {
@@ -777,7 +785,7 @@
 </head>
 <body>
   <button class="back-btn" id="backBtn" type="button"
-          aria-label="Back to levels" hidden>&#8249;</button>
+          aria-label="Back to games" hidden>&#8249;</button>
   <button class="menu-btn" id="menuBtn" type="button" aria-label="How to play">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
       <circle cx="12" cy="12" r="9.25" stroke="currentColor" stroke-width="1.6"/>
@@ -792,7 +800,7 @@
     <header class="levels-head">
       <img class="levels-logo" src="sandwich.png" width="72" height="72" alt="" aria-hidden="true">
       <h1 class="levels-title">Sandwich</h1>
-      <p class="levels-progress" id="levelsProgress">0 of 3 levels complete</p>
+      <p class="levels-progress" id="levelsProgress">0 of 3 games complete</p>
     </header>
     <div class="level-cards" id="levelCards"></div>
   </section>
@@ -855,7 +863,7 @@
         <div class="intro-pbound far">SCOUT</div>
       </div>
       <h2 class="intro-title" id="introTitle">Sandwich now has a Thermometer</h2>
-      <p class="intro-body" id="introBody">Every guess now tells you how close you are to the secret word with a % out of 100.</p>
+      <p class="intro-body" id="introBody">Every guess shows a <strong>%</strong>. The higher it is, the closer you are to the secret word. Here QUEEN (75.2%) is warmer than MONEY (65.2%), and 100% is the answer.</p>
       <button class="btn intro-play" id="introPlay" type="button">Play now</button>
       <button class="intro-tutorial" id="introTutorial" type="button">Haven't played Sandwich? Play tutorial</button>
     </div>
@@ -875,7 +883,7 @@
         <div class="howto-pill">STAR</div>
       </div>
       <p class="howto-caption"><strong>PLAY</strong> sits alphabetically between MILK and STAR.</p>
-      <p class="howto-body">Every guess also shows a <strong>%</strong> — how close you are to the secret word, where 100% is the answer.</p>
+      <p class="howto-body">Every guess also shows a <strong>%</strong> with an arrow pointing toward the word. The higher the %, the closer you are, so QUEEN (75%) is closer than MONEY (65%). 100% is the answer.</p>
       <button class="btn howto-tutorial" id="howtoTutorial" type="button">Play tutorial</button>
     </div>
   </div>
@@ -29508,7 +29516,7 @@
             card.setAttribute("data-level", idx);
             var num = document.createElement("span");
             num.className = "level-card-num";
-            num.textContent = "Level " + (idx + 1);
+            num.textContent = "Game " + (idx + 1);
             var status = document.createElement("span");
             status.className = "level-card-status";
             status.textContent = st.text;
@@ -29520,7 +29528,7 @@
         }
         var progressEl = document.getElementById("levelsProgress");
         if (progressEl) {
-          progressEl.textContent = solvedCount + " of " + LEVEL_COUNT + " levels complete";
+          progressEl.textContent = solvedCount + " of " + LEVEL_COUNT + " games complete";
         }
       }
 
@@ -29561,26 +29569,26 @@
         showLevelScreen();
       }
 
-      // End-of-level prompt: Next level (unless on the last) and Back to levels.
+      // End-of-game prompt: Next game (unless on the last) and Back to games.
       function showLevelPrompt(won) {
         var n = currentLevelIndex + 1;
         var word = LEVEL_WORDS[currentLevelIndex].toUpperCase();
         var isLast = currentLevelIndex >= LEVEL_COUNT - 1;
         var used = state.guesses.length;
         promptText.innerHTML = won
-          ? "Level " + n + " solved — <strong>" + word + "</strong> in " +
+          ? "Game " + n + " solved. <strong>" + word + "</strong> in " +
             used + (used === 1 ? " guess." : " guesses.")
-          : "Out of guesses — level " + n + " was <strong>" + word + "</strong>.";
-        promptSeed.textContent = "Level " + n + " of " + LEVEL_COUNT;
+          : "Out of guesses. Game " + n + " was <strong>" + word + "</strong>.";
+        promptSeed.textContent = "Game " + n + " of " + LEVEL_COUNT;
         var actions = [];
         if (!isLast) {
           actions.push({
-            label: "Next level", primary: true,
+            label: "Next game", primary: true,
             onClick: function () { startLevel(currentLevelIndex + 1); }
           });
         }
         actions.push({
-          label: "Back to levels", primary: isLast, onClick: backToLevels
+          label: "Back to games", primary: isLast, onClick: backToLevels
         });
         setPromptActions(actions);
         promptOverlay.hidden = false;
@@ -29784,8 +29792,8 @@
           }
           // The tutorial handles its own win screen and saves no result.
           if (TUTORIAL.active) { tutorialOnWin(); return; }
-          showPrompt("Nice one — you found <strong>" +
-            w.toUpperCase() + "</strong>!");
+          showPrompt("Nice one! You found <strong>" +
+            w.toUpperCase() + "</strong>.");
           return;
         }
 
@@ -29838,7 +29846,7 @@
         if (state.guessesLeft <= 0) {
           state.gameOver = true;
           state.message =
-            "Out of guesses — the word was " + state.answer.toUpperCase() + ".";
+            "Out of guesses. The word was " + state.answer.toUpperCase() + ".";
           logEvent("loss", {
             answer: state.answer,
             guessesUsed: state.guesses.length
@@ -29992,12 +30000,19 @@
       }
 
       // The % thermometer is v2's only feedback: a guessed bound word carries
-      // its closeness % inline. Direction is already conveyed by which side of
-      // the answer the word sits on.
+      // its closeness % inline, with an arrow pointing toward the hidden word
+      // (down from the lower bound, up from the upper bound).
       function boundHTML(word, side) {
         var html = word.toUpperCase();
         if (wasGuessed(word)) {
-          html += '<span class="bound-meta">' + fmtCloseness(closeness(word, state.answer, state.startLower, state.startUpper)) + "%</span>";
+          var up = side === "upper";
+          var arrow = '<svg class="bound-arrow' + (up ? " up" : "") +
+            '" viewBox="0 0 12 12" aria-hidden="true">' +
+            '<path d="M6 2 L6 10 M2.5 6.5 L6 10 L9.5 6.5" fill="none" ' +
+            'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+            'stroke-linejoin="round"/></svg>';
+          html += '<span class="bound-meta">' + arrow +
+            fmtCloseness(closeness(word, state.answer, state.startLower, state.startUpper)) + "%</span>";
         }
         return html;
       }
