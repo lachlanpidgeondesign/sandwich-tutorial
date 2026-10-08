@@ -161,7 +161,31 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
-## [ ] Phase 6 — Tutorial on the real engine · CHECKPOINT
+## [x] Phase 6 — Tutorial on the real engine · CHECKPOINT
+
+<!-- Done: tutorial runs the REAL engine with a fixed puzzle (answer STONE,
+     opening bounds SPORT..STUCK). Word-order confirmed in WORDS and byte order:
+     sport < steam < stone < store < stuck (all present, none substituted).
+     A coach card (#coach) sits above the keyboard, reusing the v1 lead/note/
+     cue-pill vocabulary, one step at a time:
+       0 intro (Next)  1 "Try STEAM" (guess)  2 explain edge + % (Next)
+       3 "Try STORE" (guess)  4 "Try STONE", keep guessing (guess)  win "finish".
+     Suggestions are nudges only -- any valid in-range guess is accepted (the
+     engine's own validateGuess runs). Reading steps + the win screen dim and
+     block the keyboard (keyboard.blocked + tutorialBlocksInput); guess steps
+     open it. Guesses are UNLIMITED (guessesLeft re-pinned each resolve, loss
+     path skipped) and the guesses-left line + subtitle are hidden
+     (.app.tutorial). Skip ("Skip tutorial") shows on every step -> level
+     screen; win -> "Back to levels". currentLevelIndex is null throughout so
+     saveLevelResult is never called -- nothing lands in sandwich-v2-levels.
+     Entry points: intro modal "Play tutorial" and ••• "How to play".
+     Deviation from the brief: step 5 adds a "Try STONE" cue (the answer) so the
+     run is completable by following the suggestions, as the Done-when requires.
+     Self-tests 14 (tutorial words valid+ordered+playable; step gating).
+     Verified headless end-to-end: scripted run STEAM->STORE->STONE wins and
+     shows "That's the game."; ignoring the nudge (STRUM) still advances; Skip
+     at step 0 and mid-run both return to levels with the levels key still null.
+     CHECKPOINT: stop for Lachlan to hand-test on a phone. -->
 
 - Build the tutorial inside `sandwich-v2.html` using the real game engine, not a static mock. Use `sandwich-tutorial.html` as a reference for tone and step order, adapted to explain the %.
 - Fixed puzzle: answer `stone`, bounds `sport` and `stuck`. Before building, confirm all of `sport`, `stuck`, `steam`, `store` and `stone` are in `WORDS` and in the right order. If any fails, pick the nearest valid alternative and report it.
