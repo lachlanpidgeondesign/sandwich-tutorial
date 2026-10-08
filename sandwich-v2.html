@@ -18,8 +18,8 @@
       --foreground: #1a2230;
       --muted-foreground: #6b7280;
       --border: #d9dbe0;
-      --bg: #f3c56d;
-      --brown: #5a3c17;
+      --bg: #f8cd8b;
+      --brown: #614518;
     }
 
     * {
@@ -31,11 +31,14 @@
 
     html,
     body {
-      background: var(--bg);
+      background: #fff;
       color: var(--foreground);
       font-family: "Inter", system-ui, sans-serif;
       min-height: 100dvh;
     }
+    /* Only the landing / level-select screen uses the orange background; the
+       game and tutorial stay white. Toggled from JS as the screen changes. */
+    body.on-levels { background: var(--bg); }
 
     .app {
       max-width: 460px;
@@ -29521,6 +29524,7 @@
         backBtn.hidden = true;
         menuBtn.hidden = true;       // How to Play lives on the game screen only
         levelsScreen.hidden = false;
+        document.body.classList.add("on-levels");   // orange only here
       }
 
       function startLevel(idx) {
@@ -29529,6 +29533,7 @@
         appEl.hidden = false;
         backBtn.hidden = false;
         menuBtn.hidden = false;      // info / How to Play available in-game
+        document.body.classList.remove("on-levels");  // white game screen
         loadLevel();
       }
 
@@ -30402,6 +30407,7 @@
         appEl.hidden = false;
         appEl.classList.add("tutorial");
         appEl.classList.remove("tutorial-won");
+        document.body.classList.remove("on-levels");  // white tutorial screen
         backBtn.hidden = true;       // the coach has its own Skip
         menuBtn.hidden = true;       // Skip takes the top-right slot
         coachSkipBtn.hidden = false;
