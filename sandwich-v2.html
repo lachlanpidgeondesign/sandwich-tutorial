@@ -29,6 +29,13 @@
       -webkit-tap-highlight-color: transparent;
     }
 
+    /* No double-tap-to-zoom on controls: a quick second tap (e.g. on the
+       delete key) should repeat the action, not zoom the page. Scrolling and
+       pinch-zoom are unaffected. */
+    button {
+      touch-action: manipulation;
+    }
+
     html,
     body {
       background: #fff;
