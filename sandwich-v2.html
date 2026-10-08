@@ -29316,6 +29316,98 @@
         console.log("[sandwich] " + name, data);
       }
 
+      // ---- Analytics (Google Sheets) ---------------------------------------
+      // Fire-and-forget: a row is POSTed to a Google Apps Script web app when a
+      // real level starts and when it finishes (win or loss). It never blocks
+      // input, never throws, and is a complete no-op until ANALYTICS_URL is set,
+      // so the page works offline and the self-test makes no network calls.
+      // Paste the deployed Apps Script /exec URL between the quotes to turn it on.
+      var ANALYTICS_URL = "";
+      var ANALYTICS_UID_KEY = "sandwich-v2-uid";
+
+      // A random id. Prefers crypto.randomUUID; falls back for old web views.
+      function uuid() {
+        try {
+          if (window.crypto && typeof window.crypto.randomUUID === "function") {
+            return window.crypto.randomUUID();
+          }
+        } catch (e) { /* fall through to the Math.random id */ }
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+          var r = (Math.random() * 16) | 0;
+          var v = c === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+      }
+
+      // A stable per-player id kept in localStorage. If storage is unavailable
+      // it degrades to a per-load id so analytics still group within a session.
+      var ephemeralUid = null;
+      function getUserId() {
+        try {
+          var existing = localStorage.getItem(ANALYTICS_UID_KEY);
+          if (existing) return existing;
+          var fresh = uuid();
+          localStorage.setItem(ANALYTICS_UID_KEY, fresh);
+          return fresh;
+        } catch (e) {
+          if (!ephemeralUid) ephemeralUid = uuid();
+          return ephemeralUid;
+        }
+      }
+
+      // One id per page load, to group a single play session and spot refreshes.
+      var SESSION_ID = uuid();
+
+      // Pure: builds the row object. No DOM, no network, so the self-test can
+      // assert on its shape.
+      function buildAnalyticsPayload(event, fields) {
+        var data = {
+          event: event,
+          userId: getUserId(),
+          sessionId: SESSION_ID,
+          at: Date.now()
+        };
+        if (fields) {
+          for (var k in fields) {
+            if (Object.prototype.hasOwnProperty.call(fields, k)) data[k] = fields[k];
+          }
+        }
+        return data;
+      }
+
+      // Fire-and-forget send. sendBeacon with a text/plain body (which avoids a
+      // CORS preflight the Apps Script endpoint can't answer); falls back to
+      // fetch. Any failure is swallowed so gameplay is never affected.
+      function sendAnalytics(event, fields) {
+        if (!ANALYTICS_URL) return;
+        var body;
+        try {
+          body = JSON.stringify(buildAnalyticsPayload(event, fields));
+        } catch (e) { return; }
+        try {
+          if (navigator && typeof navigator.sendBeacon === "function") {
+            var blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+            if (navigator.sendBeacon(ANALYTICS_URL, blob)) return;
+          }
+        } catch (e) { /* fall through to fetch */ }
+        try {
+          if (typeof fetch === "function") {
+            fetch(ANALYTICS_URL, {
+              method: "POST",
+              mode: "no-cors",
+              keepalive: true,
+              headers: { "Content-Type": "text/plain;charset=UTF-8" },
+              body: body
+            }).catch(function () { /* offline or blocked: drop it */ });
+          }
+        } catch (e) { /* no network available: drop it */ }
+      }
+
+      // Whole seconds since a start timestamp; "" if we never recorded a start.
+      function secsSince(t) {
+        return t ? Math.round((Date.now() - t) / 1000) : "";
+      }
+
       // ---- Puzzle generation ------------------------------------------------
       function mulberry32(a) {
         return function () {
@@ -29473,6 +29565,7 @@
       var LEVEL_SEEDS = [1, 2, 3];         // fixed label seed per level
       var LEVELS_KEY = "sandwich-v2-levels";
       var currentLevelIndex = null;        // null = not currently in a level
+      var levelStartedAt = null;           // ms timestamp of the current level start
       var forcedLevelAnswer = null;        // read by buildPuzzle while loading
       var forcedLevelLower = null;         // curated lower bound for the level
       var forcedLevelUpper = null;         // curated upper bound for the level
@@ -29544,6 +29637,8 @@
 
       function startLevel(idx) {
         currentLevelIndex = idx;
+        levelStartedAt = Date.now();
+        sendAnalytics("level_started", { level: idx + 1 });
         levelsScreen.hidden = true;
         appEl.hidden = false;
         backBtn.hidden = false;
@@ -29786,6 +29881,12 @@
           });
           render();
           if (currentLevelIndex !== null) {
+            sendAnalytics("level_completed", {
+              level: currentLevelIndex + 1,
+              guesses: state.guesses.length,
+              won: true,
+              timeTakenSec: secsSince(levelStartedAt)
+            });
             saveLevelResult(currentLevelIndex, true, state.guesses.length);
             showLevelPrompt(true);
             return;
@@ -29853,6 +29954,14 @@
           });
           render();
           if (currentLevelIndex !== null) {
+            // 11 is the analytics-only "did not solve in 10" sentinel; gameplay
+            // still allows exactly MAX_GUESSES (10) attempts.
+            sendAnalytics("level_completed", {
+              level: currentLevelIndex + 1,
+              guesses: 11,
+              won: false,
+              timeTakenSec: secsSince(levelStartedAt)
+            });
             saveLevelResult(currentLevelIndex, false);
             showLevelPrompt(false);
             return;
@@ -30758,6 +30867,44 @@
             if (tutorialForcedNextChar("guided-final", "pla") !== "y") return "final should light Y last";
             if (tutorialForcedNextChar("guided-final", "play") !== null) return "final should end after PLAY";
             if (tutorialForcedNextChar("opening", "") !== null) return "opening should light nothing";
+            return true;
+          }
+        },
+        {
+          // Phase 8: analytics payloads carry the identifying fields and the
+          // event-specific data. Pure over buildAnalyticsPayload's output.
+          name: "analytics level_started payload has the identifying fields",
+          fn: function () {
+            var p = buildAnalyticsPayload("level_started", { level: 2 });
+            if (p.event !== "level_started") return "wrong event: " + p.event;
+            if (p.level !== 2) return "wrong level: " + p.level;
+            if (!p.userId) return "missing userId";
+            if (!p.sessionId) return "missing sessionId";
+            if (typeof p.at !== "number") return "missing numeric at";
+            return true;
+          }
+        },
+        {
+          // Phase 8: a loss is encoded as guesses 11 + won:false, so the sheet
+          // can tell "solved on the 10th" (10) from "failed" (11) at a glance.
+          name: "analytics loss payload encodes guesses 11 and won false",
+          fn: function () {
+            var p = buildAnalyticsPayload("level_completed",
+              { level: 1, guesses: 11, won: false, timeTakenSec: 42 });
+            if (p.guesses !== 11) return "expected guesses 11, got " + p.guesses;
+            if (p.won !== false) return "expected won false, got " + p.won;
+            if (p.timeTakenSec !== 42) return "lost timeTakenSec";
+            return true;
+          }
+        },
+        {
+          // Phase 8: the id generator never returns an empty value, so a user
+          // and session id are always present.
+          name: "uuid returns a non-empty string",
+          fn: function () {
+            var a = uuid();
+            if (typeof a !== "string" || !a) return "uuid was empty";
+            if (uuid() === a) return "uuid is not varying";
             return true;
           }
         }

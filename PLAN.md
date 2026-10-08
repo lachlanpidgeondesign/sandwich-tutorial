@@ -245,6 +245,44 @@ Read `.github/copilot-instructions.md` first. Work top to bottom; start at the f
 
 ---
 
+## [x] Phase 8 — Analytics tracker
+
+<!-- Done: fire-and-forget analytics to a Google Apps Script web app. A row is
+     sent on real level start (level_started: userId, sessionId, level, at) and
+     on finish (level_completed: + guesses, won, timeTakenSec). Loss is encoded
+     as guesses 11 + won:false (gameplay unchanged at MAX_GUESSES 10; 11 is an
+     analytics-only "did not solve" sentinel), win is the actual 1-10 + won:true.
+     userId is a random UUID in localStorage ("sandwich-v2-uid", try/catch,
+     ephemeral fallback); sessionId is one UUID per page load; uuid() prefers
+     crypto.randomUUID with a Math.random fallback. sendAnalytics uses
+     navigator.sendBeacon (text/plain Blob, no CORS preflight) then falls back
+     to fetch no-cors keepalive, all in try/catch so it never blocks or throws.
+     ANALYTICS_URL is blank by default => a complete no-op (offline-safe, no
+     network in the self-test); paste the deployed /exec URL to enable. Only the
+     three real levels are tracked (guarded by currentLevelIndex !== null, so the
+     tutorial and free-play send nothing). Self-tests 17 (payload shape, loss
+     11/false encoding, uuid non-empty). Verified headless end-to-end with a
+     dummy URL: L1 start->win {guesses:1,won:true}, L2 start->10 wrong
+     {guesses:11,won:false,timeTakenSec}, tutorial sends nothing, userId stable
+     across events, sessionId stable within a load; with the URL blank, zero
+     network. The Apps Script and deploy steps are handed to Lachlan separately. -->
+
+- Send a row on level start and level finish to a Google Sheet via Apps Script.
+- Fields: userId (persistent UUID), sessionId (per load), level (1-3), and on
+  finish guesses (11 = didn't solve), won, timeTakenSec; Apps Script stamps the
+  server time.
+- Gameplay is unchanged: still exactly 10 guesses per game.
+- Blank ANALYTICS_URL is a no-op; only the three real levels are tracked.
+
+**Done when**
+- `?selftest` shows PASS and the new payload assertions are included.
+- With the URL blank, playing a level makes no network calls.
+- With a URL set, start/win/loss each produce one correctly-shaped row and the
+  tutorial produces none.
+- `git diff` shows no change to `game.html` or `sandwich-tutorial.html`.
+
+---
+
 ## Decisions to confirm
 
 - Phase 0 ❓ The ••• / Prototype menu cards use hardcoded `#fff`/rgba rather than `:root` tokens (same as game.html's overlays). OK to keep, or tokenise?
