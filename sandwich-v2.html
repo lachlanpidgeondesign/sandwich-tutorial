@@ -29431,8 +29431,11 @@
             var w = QUERY.windowWords || defaultWindow;
             var forced = boundsAround(forceWord, w);
             if (forced) {
-              if (QUERY.lower && RANK.has(QUERY.lower)) forced.lower = QUERY.lower;
-              if (QUERY.upper && RANK.has(QUERY.upper)) forced.upper = QUERY.upper;
+              // Curated level bounds win; ?lower=/?upper= are the test override.
+              var lo = forcedLevelLower || QUERY.lower;
+              var up = forcedLevelUpper || QUERY.upper;
+              if (lo && RANK.has(lo)) forced.lower = lo;
+              if (up && RANK.has(up)) forced.upper = up;
               if (forced.lower < forced.answer && forced.answer < forced.upper) {
                 return forced;
               }
@@ -29450,17 +29453,21 @@
       var currentSeed;
 
       // ---- Levels -----------------------------------------------------------
-      // Three fixed levels. Each pins its answer (forcedLevelAnswer, read by
-      // buildPuzzle) so its bounds are identical on every play -- boundsAround
-      // is deterministic, so the fixed seed only labels the game, it never moves
-      // the bounds. Results persist in localStorage under LEVELS_KEY; only a
-      // FINISHED level writes one, so backing out mid-level saves nothing.
-      var LEVEL_WORDS = ["skirt", "drink", "couch", "stone", "earth"];
+      // Three fixed levels. Each pins its answer (forcedLevelAnswer) AND its
+      // curated bounds (forcedLevelLower/Upper), taken from the designed level
+      // pack, so every play is identical. The fixed seed only labels the game.
+      // Results persist in localStorage under LEVELS_KEY; only a FINISHED level
+      // writes one, so backing out mid-level saves nothing.
+      var LEVEL_WORDS = ["cloud", "grass", "fish"];
+      var LEVEL_LOWER = ["black", "given", "face"];
+      var LEVEL_UPPER = ["early", "heart", "home"];
       var LEVEL_COUNT = 3;                 // only the first three are levels
       var LEVEL_SEEDS = [1, 2, 3];         // fixed label seed per level
       var LEVELS_KEY = "sandwich-v2-levels";
       var currentLevelIndex = null;        // null = not currently in a level
       var forcedLevelAnswer = null;        // read by buildPuzzle while loading
+      var forcedLevelLower = null;         // curated lower bound for the level
+      var forcedLevelUpper = null;         // curated upper bound for the level
 
       var levelsScreen = document.getElementById("levelsScreen");
       var levelCardsEl = document.getElementById("levelCards");
@@ -29540,8 +29547,12 @@
       // Pin the current level's answer and build it with its fixed label seed.
       function loadLevel() {
         forcedLevelAnswer = LEVEL_WORDS[currentLevelIndex];
+        forcedLevelLower = LEVEL_LOWER[currentLevelIndex];
+        forcedLevelUpper = LEVEL_UPPER[currentLevelIndex];
         newGame(LEVEL_SEEDS[currentLevelIndex]);
         forcedLevelAnswer = null;
+        forcedLevelLower = null;
+        forcedLevelUpper = null;
       }
 
       // Back out of a level without finishing it: no result is saved.
@@ -30642,24 +30653,27 @@
           }
         },
         {
-          // Phase 4: each level pins a known answer and builds with fixed,
-          // repeatable bounds. boundsAround is seed-independent, so the same
-          // level must yield identical bounds on two builds in a row, with the
-          // answer between them.
-          name: "each level builds the same bounds twice in a row",
+          // Phase 4: each level pins a known answer and its curated bounds.
+          // The bounds must be real words in byte order with the answer between
+          // them, and boundsAround (used as the fallback window) must be stable.
+          name: "each level has valid, ordered, stable bounds",
           fn: function () {
-            var words = ["skirt", "drink", "couch"];
+            var words = ["cloud", "grass", "fish"];
+            var lowers = ["black", "given", "face"];
+            var uppers = ["early", "heart", "home"];
             for (var i = 0; i < words.length; i++) {
-              var a = words[i];
+              var a = words[i], lo = lowers[i], up = uppers[i];
               if (!RANK.has(a)) return "level word '" + a + "' not in WORDS";
+              if (!RANK.has(lo)) return "lower bound '" + lo + "' not in WORDS";
+              if (!RANK.has(up)) return "upper bound '" + up + "' not in WORDS";
+              if (!(lo < a && a < up)) {
+                return "answer '" + a + "' not between '" + lo + "' and '" + up + "'";
+              }
               var p1 = boundsAround(a, WINDOW_WORDS);
               var p2 = boundsAround(a, WINDOW_WORDS);
-              if (!p1 || !p2) return "no bounds built for '" + a + "'";
+              if (!p1 || !p2) return "no fallback bounds built for '" + a + "'";
               if (p1.lower !== p2.lower || p1.upper !== p2.upper) {
-                return "bounds for '" + a + "' not stable across builds";
-              }
-              if (!(p1.lower < a && a < p1.upper)) {
-                return "answer '" + a + "' not between its bounds";
+                return "fallback bounds for '" + a + "' not stable across builds";
               }
             }
             return true;
