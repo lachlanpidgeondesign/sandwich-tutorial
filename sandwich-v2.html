@@ -707,11 +707,19 @@
     }
     .coach-step.step-in { animation: step-in 0.26s cubic-bezier(0, 0, 0.2, 1) both; }
     .coach-lead {
-      font-size: 22px;
+      /* Always a 3-line block so the cue pill below never jumps vertically.
+         Shorter copy is centred within the reserved height; the size is tuned
+         so the longest lead still fits in three lines. */
+      font-size: 14px;
       font-weight: 500;
       line-height: 1.3;
       color: var(--foreground);
       text-wrap: balance;
+      height: calc(3 * 1.3em);
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .coach-lead strong { font-weight: 700; }
     .coach-cue {
